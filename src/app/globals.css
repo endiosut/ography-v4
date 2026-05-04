@@ -1,0 +1,68 @@
+@import "tailwindcss";
+:root {
+  --black: #0a0906;
+  --dark: #0f0d0a;
+  --dark2: #161310;
+  --dark3: #1e1a15;
+  --gold: #c9a96e;
+  --gold2: #b8924a;
+  --gold-dim: rgba(201,169,110,.15);
+  --gold-dim2: rgba(201,169,110,.06);
+  --cream: #f0e8d8;
+  --cream-muted: rgba(240,232,216,.65);
+  --cream-dim: rgba(240,232,216,.25);
+  --border: rgba(201,169,110,.15);
+  --border2: rgba(201,169,110,.3);
+  --white: #ffffff;
+  --red: #c0392b;
+  --green: #27ae60;
+  --blue: #2980b9;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--black); color: var(--cream); font-family: 'Montserrat', sans-serif; font-weight: 300; }
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: var(--dark); }
+::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 2px; }
+
+.serif { font-family: 'Cormorant Garamond', serif; }
+.mono  { font-family: 'IBM Plex Mono', monospace; }
+
+.badge-pending   { background: rgba(201,169,110,.12); color: var(--gold); }
+.badge-active    { background: rgba(39,174,96,.12);   color: #27ae60; }
+.badge-completed { background: rgba(39,174,96,.18);   color: #27ae60; }
+.badge-review    { background: rgba(41,128,185,.12);  color: #2980b9; }
+.badge-paid      { background: rgba(39,174,96,.15);   color: #27ae60; }
+.badge-failed    { background: rgba(192,57,43,.12);   color: var(--red); }
+
+.stage-payment_received { color: var(--gold); }
+.stage-brief_submitted  { color: #f39c12; }
+.stage-in_production    { color: #2980b9; }
+.stage-review           { color: #8e44ad; }
+.stage-completed        { color: #27ae60; }
+
+.btn-gold {
+  background: var(--gold); color: var(--black); border: none;
+  padding: .6rem 1.5rem; font-family: 'Montserrat'; font-size: .75rem;
+  font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+  cursor: pointer; transition: background .2s;
+}
+.btn-gold:hover { background: var(--gold2); }
+
+.btn-outline {
+  background: transparent; color: var(--gold); border: 1px solid var(--border2);
+  padding: .6rem 1.5rem; font-family: 'Montserrat'; font-size: .75rem;
+  font-weight: 400; letter-spacing: .08em; cursor: pointer; transition: all .2s;
+}
+.btn-outline:hover { background: var(--gold-dim); }
+
+.inp {
+  background: var(--dark3); border: 1px solid var(--border);
+  color: var(--cream); font-family: 'Montserrat'; font-size: .8rem;
+  padding: .65rem 1rem; width: 100%; outline: none;
+  transition: border-color .2s;
+}
+.inp:focus { border-color: var(--gold2); }
+.inp::placeholder { color: var(--cream-dim); }
