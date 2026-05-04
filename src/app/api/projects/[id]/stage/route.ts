@@ -9,9 +9,11 @@ const ADMIN_EMAIL = 'endiosut.eo@gmail.com';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     // Verify admin session
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,14 +39,14 @@ export async function POST(
     }
 
     await advanceStage({
-      projectId: params.id,
+      projectId: id,
       toStage: stage as Stage,
       triggeredBy: 'admin',
       notes: notes || null,
       deliverableUrl: deliverableUrl || null,
     });
 
-    return NextResponse.json({ success: true, projectId: params.id, newStage: stage });
+    return NextResponse.json({ success: true, projectId: id, newStage: stage });
   } catch (e: any) {
     console.error('Stage advance error:', e);
     return NextResponse.json({ error: e.message || 'Stage advance failed' }, { status: 500 });
