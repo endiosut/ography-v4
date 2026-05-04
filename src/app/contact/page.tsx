@@ -194,18 +194,20 @@ function ContactPageInner() {
     if (!form.name || !form.email) return;
     setSubmitting(true);
     try {
-      await fetch(`${SB_URL}/rest/v1/clients`, {
+      const res = await fetch('/api/contact', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, Prefer: 'return=minimal' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: form.name, email: form.email,
+          name: form.name,
+          email: form.email,
           phone: form.phone ? `${phonePrefix} ${form.phone}` : null,
           company: form.company || null,
-          notes: `Services: ${selectedNames || 'Not specified'}\n\nMessage: ${form.message}\n\nSource: ${form.source}`,
-          status: 'lead',
+          services: selectedServices.length > 0 ? selectedNames : null,
+          message: form.message || null,
+          source: form.source || 'contact_form',
         }),
       });
-      // Clear sessionStorage
+      if (!res.ok) throw new Error('Server error');
       sessionStorage.removeItem('og_contact_services');
       setSuccess(true);
     } catch {

@@ -2,18 +2,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-// ─────────────────────────────────────────────────────────────────
-//  OGraphy V4 — Client Portal
-//  File: src/app/portal/page.tsx
-//
-//  Status tracking flow:
-//  lead → confirmed → in_production → review → delivered → completed
-//  
-//  Client sees: real-time status of every project
-//  Admin signals progress by updating `status` field in Supabase projects table
-//  Client is notified by n8n webhook when status changes
-// ─────────────────────────────────────────────────────────────────
-
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -30,6 +18,8 @@ type Project = {
   id: string;
   name: string;
   status: string;
+  service_name?: string;
+  stage?: string;
   created_at: string;
   updated_at: string;
   notes?: string;
@@ -45,10 +35,13 @@ type Client = {
   status: string;
 };
 
+type CatalogCount = { count: number };
+
 export default function PortalPage() {
   const [user, setUser] = useState<{ email: string; name?: string; avatar?: string } | null>(null);
   const [client, setClient] = useState<Client | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [catalogCount, setCatalogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'projects' | 'purchases' | 'settings'>('projects');
   const [authError, setAuthError] = useState(false);
@@ -59,7 +52,6 @@ export default function PortalPage() {
         const { createClient } = await import('@supabase/supabase-js');
         const sb = createClient(SB_URL, SB_ANON);
 
-        // Get session
         const { data: { user: u } } = await sb.auth.getUser();
         if (!u) {
           setAuthError(true);
@@ -73,23 +65,21 @@ export default function PortalPage() {
           avatar: u.user_metadata?.avatar_url,
         });
 
-        // Find client record by email
-        const { data: clientData } = await sb
-          .from('clients')
-          .select('*')
-          .eq('email', u.email)
-          .single();
+        // Fetch catalog count and client data in parallel
+        const [catalogRes, clientRes] = await Promise.all([
+          sb.from('catalog_items').select('id', { count: 'exact' }).eq('is_active', true),
+          sb.from('clients').select('*').eq('email', u.email).single(),
+        ]);
 
-        if (clientData) {
-          setClient(clientData);
+        setCatalogCount(catalogRes.count || 0);
 
-          // Fetch projects linked to this client
+        if (clientRes.data) {
+          setClient(clientRes.data);
           const { data: projectData } = await sb
             .from('projects')
             .select('*')
-            .eq('client_id', clientData.id)
+            .eq('client_id', clientRes.data.id)
             .order('created_at', { ascending: false });
-
           setProjects(projectData || []);
         }
       } catch (e) {
@@ -110,7 +100,7 @@ export default function PortalPage() {
   };
 
   const getStatusIndex = (status: string) =>
-    STATUS_FLOW.findIndex(s => s.key === status);
+    STATUS_FLOW.findIndex(s => s.key === (status || 'lead'));
 
   const getStatusInfo = (status: string) =>
     STATUS_FLOW.find(s => s.key === status) || STATUS_FLOW[0];
@@ -118,6 +108,9 @@ export default function PortalPage() {
   const initials = user?.name
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : user?.email?.[0]?.toUpperCase() || '?';
+
+  const activeProjects = projects.filter(p => !['completed', 'delivered'].includes(p.status || p.stage || '')).length;
+  const completedProjects = projects.filter(p => ['completed', 'delivered'].includes(p.status || p.stage || '')).length;
 
   if (loading) {
     return (
@@ -162,16 +155,20 @@ export default function PortalPage() {
         justifyContent: 'space-between', background: 'rgba(10,9,6,.97)',
         backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(201,169,110,.12)',
       }}>
-        {/* Logo — fixed size, links to catalog */}
         <Link href="/catalog" style={{ textDecoration: 'none' }}>
           <img src="/logo.svg" alt="OGraphy" style={{ width: 148, height: 'auto', display: 'block' }} />
         </Link>
 
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <Link href="/catalog" style={{ fontSize: '.6rem', letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', textDecoration: 'none' }}>
-            Add Services
+          <Link href="/portal/ai-studio" style={{ fontSize: '.6rem', letterSpacing: '.14em', textTransform: 'uppercase', color: '#c9a96e', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '.4rem', border: '1px solid rgba(201,169,110,.25)', padding: '.35rem .85rem' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2m-3.5-7.5-1.5 1.5M5 5l1.5 1.5M19 19l-1.5-1.5M5 19l1.5-1.5"/>
+            </svg>
+            AI Studio
           </Link>
-          {/* User avatar + signout */}
+          <Link href="/catalog" style={{ fontSize: '.6rem', letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', textDecoration: 'none' }}>
+            + Services
+          </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
             <div style={{
               width: 34, height: 34, borderRadius: '50%',
@@ -201,11 +198,13 @@ export default function PortalPage() {
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '7rem 3rem 5rem' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '3rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
             <div style={{ fontSize: '.5rem', letterSpacing: '.3em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', marginBottom: '.5rem' }}>Client Portal</div>
             <h1 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 'clamp(1.6rem,3vw,2.4rem)', fontWeight: 300, color: '#f0e8d8', lineHeight: 1.2 }}>
-              {client ? `Welcome back, ${client.name?.split(' ')[0] || user.name?.split(' ')[0] || 'there'}.` : `Hello, ${user.name?.split(' ')[0] || user.email.split('@')[0]}.`}
+              {client
+                ? `Welcome back, ${client.name?.split(' ')[0] || user.name?.split(' ')[0] || 'there'}.`
+                : `Hello, ${user.name?.split(' ')[0] || user.email.split('@')[0]}.`}
             </h1>
             {client?.company && <div style={{ fontSize: '.7rem', color: 'rgba(232,213,183,.35)', marginTop: '.4rem' }}>{client.company}</div>}
           </div>
@@ -213,6 +212,45 @@ export default function PortalPage() {
             + New Request
           </Link>
         </div>
+
+        {/* Stats cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2.5rem' }}>
+          {[
+            { label: 'Active', value: activeProjects },
+            { label: 'Completed', value: completedProjects },
+            { label: 'Services', value: catalogCount || '—' },
+          ].map(stat => (
+            <div key={stat.label} style={{ border: '1px solid rgba(201,169,110,.1)', background: '#0f0d0a', padding: '1.25rem', textAlign: 'center', borderRadius: 4 }}>
+              <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '2rem', color: '#c9a96e', fontWeight: 300, lineHeight: 1 }}>{stat.value}</div>
+              <div style={{ fontSize: '.48rem', letterSpacing: '.2em', textTransform: 'uppercase', color: 'rgba(232,213,183,.3)', marginTop: '.5rem' }}>{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* AI Studio CTA banner */}
+        <Link href="/portal/ai-studio" style={{ textDecoration: 'none', display: 'block', marginBottom: '2.5rem' }}>
+          <div style={{
+            border: '1px solid rgba(201,169,110,.2)', background: 'linear-gradient(135deg, rgba(201,169,110,.04) 0%, rgba(201,169,110,.01) 100%)',
+            padding: '1.25rem 1.75rem', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            cursor: 'pointer', transition: 'border-color .2s',
+          }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(201,169,110,.4)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(201,169,110,.2)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: 36, height: 36, border: '1px solid rgba(201,169,110,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9a96e" strokeWidth="1.5">
+                  <circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2m-3.5-7.5-1.5 1.5M5 5l1.5 1.5M19 19l-1.5-1.5M5 19l1.5-1.5"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.65rem', color: '#c9a96e', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '.2rem' }}>AI Studio</div>
+                <div style={{ fontSize: '.75rem', color: 'rgba(232,213,183,.55)', lineHeight: 1.5 }}>Generate briefs, explore aesthetics, get brand guidance</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '.65rem', color: 'rgba(201,169,110,.5)', letterSpacing: '.1em' }}>Open →</div>
+          </div>
+        </Link>
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(201,169,110,.08)', marginBottom: '2.5rem' }}>
@@ -238,47 +276,51 @@ export default function PortalPage() {
           ))}
         </div>
 
-        {/* ── PROJECTS TAB ── */}
+        {/* PROJECTS TAB */}
         {activeTab === 'projects' && (
           <div>
             {!client ? (
-              /* No client record yet — they submitted but not processed */
               <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '1px solid rgba(201,169,110,.08)' }}>
                 <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.3rem', color: '#f0e8d8', marginBottom: '1rem', fontWeight: 300 }}>
                   Your request is being reviewed
                 </div>
                 <div style={{ fontSize: '.75rem', color: 'rgba(232,213,183,.4)', lineHeight: 1.8, maxWidth: 360, margin: '0 auto 1.5rem' }}>
-                  We've received your submission and our team is reviewing it. You'll receive an email with next steps within 24 hours.
+                  {"We've received your submission and our team is reviewing it. You'll receive an email with next steps within 24 hours."}
                 </div>
                 <div style={{ fontSize: '.62rem', color: 'rgba(201,169,110,.4)', letterSpacing: '.1em' }}>
                   Questions? <a href="mailto:ographyy@gmail.com" style={{ color: '#c9a96e', textDecoration: 'none' }}>ographyy@gmail.com</a>
                 </div>
               </div>
             ) : projects.length === 0 ? (
-              /* Client exists but no projects assigned yet */
               <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '1px solid rgba(201,169,110,.08)' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.2 }}>📁</div>
                 <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.3rem', color: '#f0e8d8', marginBottom: '1rem', fontWeight: 300 }}>
                   No active projects yet
                 </div>
                 <div style={{ fontSize: '.75rem', color: 'rgba(232,213,183,.4)', lineHeight: 1.8, maxWidth: 360, margin: '0 auto 1.5rem' }}>
                   Once you submit a brief and we confirm your project, it will appear here with live status updates.
                 </div>
-                <Link href="/contact" style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}>
-                  Start a Project →
-                </Link>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Link href="/contact" style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}>
+                    Start a Project →
+                  </Link>
+                  <Link href="/portal/ai-studio" style={{ display: 'inline-block', background: 'transparent', color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
+                    Try AI Studio
+                  </Link>
+                </div>
               </div>
             ) : (
-              /* Projects with status tracker */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {projects.map(project => {
-                  const statusInfo = getStatusInfo(project.status);
-                  const statusIdx = getStatusIndex(project.status);
+                  const effectiveStatus = project.status || project.stage || 'lead';
+                  const statusInfo = getStatusInfo(effectiveStatus);
+                  const statusIdx = getStatusIndex(effectiveStatus);
                   return (
                     <div key={project.id} style={{ border: '1px solid rgba(201,169,110,.1)', background: '#0f0d0a', padding: '2rem', borderRadius: 6 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                         <div>
                           <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.2rem', color: '#f0e8d8', fontWeight: 300, marginBottom: '.3rem' }}>
-                            {project.name || project.service || 'OGraphy Project'}
+                            {project.service_name || project.name || project.service || 'OGraphy Project'}
                           </div>
                           <div style={{ fontSize: '.58rem', color: 'rgba(232,213,183,.3)', letterSpacing: '.08em' }}>
                             {new Date(project.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
@@ -289,7 +331,7 @@ export default function PortalPage() {
                           background: 'rgba(201,169,110,.06)', border: `1px solid ${statusInfo.color}33`,
                           padding: '.35rem .85rem', borderRadius: 20,
                         }}>
-                          <span>{statusInfo.icon}</span>
+                          <span style={{ fontSize: '.8rem' }}>{statusInfo.icon}</span>
                           <span style={{ fontSize: '.58rem', letterSpacing: '.1em', textTransform: 'uppercase', color: statusInfo.color }}>
                             {statusInfo.label}
                           </span>
@@ -316,14 +358,21 @@ export default function PortalPage() {
                         </div>
                       )}
 
-                      {project.deliverable_url && (
-                        <a
-                          href={project.deliverable_url}
-                          style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.65rem 1.5rem', fontSize: '.6rem', letterSpacing: '.12em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}
-                        >
-                          Download Files →
-                        </a>
-                      )}
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        {project.deliverable_url && (
+                          <a
+                            href={project.deliverable_url}
+                            style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.65rem 1.5rem', fontSize: '.6rem', letterSpacing: '.12em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}
+                          >
+                            Download Files →
+                          </a>
+                        )}
+                        {['in_production', 'review'].includes(effectiveStatus) && (
+                          <Link href="/portal/ai-studio" style={{ display: 'inline-block', color: '#c9a96e', border: '1px solid rgba(201,169,110,.25)', padding: '.65rem 1.2rem', fontSize: '.58rem', letterSpacing: '.1em', textTransform: 'uppercase', textDecoration: 'none' }}>
+                            Ask AI Assistant
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -332,7 +381,7 @@ export default function PortalPage() {
           </div>
         )}
 
-        {/* ── PURCHASES TAB ── */}
+        {/* PURCHASES TAB */}
         {activeTab === 'purchases' && (
           <div>
             {client ? (
@@ -345,19 +394,22 @@ export default function PortalPage() {
                     No requests yet.
                   </div>
                 ) : (
-                  projects.map(p => (
-                    <div key={p.id} style={{ borderBottom: '1px solid rgba(201,169,110,.06)', padding: '.9rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '.78rem', color: '#e8d5b7' }}>{p.name || p.service || 'Project'}</div>
-                        <div style={{ fontSize: '.6rem', color: 'rgba(232,213,183,.3)', marginTop: '.2rem' }}>
-                          {new Date(p.created_at).toLocaleDateString()}
+                  projects.map(p => {
+                    const effectiveStatus = p.status || p.stage || 'lead';
+                    return (
+                      <div key={p.id} style={{ borderBottom: '1px solid rgba(201,169,110,.06)', padding: '.9rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '.78rem', color: '#e8d5b7' }}>{p.service_name || p.name || p.service || 'Project'}</div>
+                          <div style={{ fontSize: '.6rem', color: 'rgba(232,213,183,.3)', marginTop: '.2rem' }}>
+                            {new Date(p.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '.58rem', color: getStatusInfo(effectiveStatus).color, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                          {getStatusInfo(effectiveStatus).label}
                         </div>
                       </div>
-                      <div style={{ fontSize: '.58rem', color: getStatusInfo(p.status).color, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                        {getStatusInfo(p.status).label}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             ) : (
@@ -368,7 +420,7 @@ export default function PortalPage() {
           </div>
         )}
 
-        {/* ── SETTINGS TAB ── */}
+        {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
           <div style={{ maxWidth: 500 }}>
             <div style={{ border: '1px solid rgba(201,169,110,.1)', padding: '2rem', background: '#0f0d0a', borderRadius: 6 }}>
