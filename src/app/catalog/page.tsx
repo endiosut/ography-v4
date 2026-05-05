@@ -29,7 +29,9 @@ type CatalogItem = {
   category: string;
   description: string;
   price: string | number;
-  turnaround: string;
+  price_display?: string;
+  turnaround_time?: string;
+  turnaround?: string;
   stripe_link?: string;
   deposit_50?: number;
   image_url?: string;
@@ -39,11 +41,17 @@ type User = { email: string; full_name?: string; avatar_url?: string };
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'All': [],
-  'Identity Systems': ['Identity Systems', 'Identity', 'Brand Identity'],
-  'Content Production': ['Content Production', 'Content', 'UGC'],
-  'Print & Physical': ['Print & Physical', 'Print', 'Physical'],
-  'Editorial': ['Editorial', 'Print Production', 'Document'],
-  'Event Media': ['Event Media', 'Events', 'Photography', 'Event'],
+  'Identity Systems': ['identity', 'brand', 'Identity', 'Brand'],
+  'Content Production': ['content', 'ugc', 'photography', 'Content'],
+  'Print & Physical': ['print', 'physical', 'Print'],
+  'Editorial': ['digital', 'editorial', 'document', 'Digital'],
+  'Event Media': ['event', 'events', 'same-day', 'Event'],
+};
+
+const applyFilter = (items: CatalogItem[], cat: string) => {
+  if (cat === 'All') return items;
+  const allowed = CATEGORY_MAP[cat] || [];
+  return items.filter(i => allowed.some(a => (i.category || '').toLowerCase().includes(a.toLowerCase())));
 };
 
 const DISPLAY_CATEGORIES = Object.keys(CATEGORY_MAP);
@@ -85,12 +93,11 @@ export default function CatalogPage() {
     getUser();
   }, []);
 
-  // Fetch catalog items
   useEffect(() => {
     const fetchItems = async () => {
       try {
         const res = await fetch(
-          `${SB_URL}/rest/v1/catalog_items?select=*&order=category,name`,
+          `${SB_URL}/rest/v1/catalog_items?select=id,name,category,description,price,price_display,turnaround_time,stripe_link,image_url&order=category,name`,
           { headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` } }
         );
         const data = await res.json();
@@ -107,18 +114,8 @@ export default function CatalogPage() {
     fetchItems();
   }, []);
 
-  // Category filter — matches Supabase category values
   useEffect(() => {
-    if (activeCategory === 'All') {
-      setFiltered(items);
-    } else {
-      const allowedCategories = CATEGORY_MAP[activeCategory] || [activeCategory];
-      setFiltered(items.filter(i =>
-        allowedCategories.some(cat =>
-          i.category?.toLowerCase().includes(cat.toLowerCase())
-        )
-      ));
-    }
+    setFiltered(applyFilter(items, activeCategory));
   }, [activeCategory, items]);
 
   // Scroll entrance animation
@@ -149,9 +146,10 @@ export default function CatalogPage() {
   const addToCart = (item: CatalogItem) => {
     setCart(prev => {
       const exists = prev.find(c => c.id === item.id);
+      const resolved = { ...item, turnaround: item.turnaround_time || item.turnaround || '' };
       return exists
         ? prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
-        : [...prev, { ...item, qty: 1 }];
+        : [...prev, { ...resolved, qty: 1 }];
     });
     setAddedId(item.id);
     setTimeout(() => setAddedId(null), 1800);
@@ -193,11 +191,14 @@ export default function CatalogPage() {
     } catch {}
   };
 
-  const formatPrice = (price: string | number): string => {
-    if (!price) return 'Request for price';
-    return String(price).startsWith('$') ? String(price) :
-      String(price).startsWith('From') ? String(price) :
-      isNaN(Number(price)) ? String(price) : `$${price}`;
+  const formatPrice = (price: string | number | null | undefined): string => {
+    if (price === null || price === undefined || price === '') return 'Contact for pricing';
+    const s = String(price).trim();
+    if (s.startsWith('$') || s.toLowerCase().startsWith('from')) return s;
+    if (/^\d+(\.\d+)?$/.test(s)) return `$${parseFloat(s).toLocaleString()}`;
+    const n = parseFloat(s.replace(/[^0-9.]/g, ''));
+    if (!isNaN(n) && n > 0) return `$${n.toLocaleString()}`;
+    return s || 'Contact for pricing';
   };
 
   const initials = user?.full_name
@@ -345,7 +346,7 @@ export default function CatalogPage() {
                 <div key={item.id} style={{ borderBottom: '1px solid rgba(201,169,110,.07)', padding: '.9rem 0', display: 'flex', gap: '.75rem', alignItems: 'flex-start' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '.76rem', color: '#e8d5b7', marginBottom: '.25rem', lineHeight: 1.3 }}>{item.name}</div>
-                    <div style={{ fontSize: '.78rem', color: '#c9a96e', fontFamily: 'Cormorant Garamond, serif', marginBottom: '.2rem' }}>{formatPrice(item.price)}</div>
+                    <div style={{ fontSize: '.78rem', color: '#c9a96e', fontFamily: 'Cormorant Garamond, serif', marginBottom: '.2rem' }}>{formatPrice((item as any).price_display || item.price)}</div>
                     {item.turnaround && <div style={{ fontSize: '.58rem', color: 'rgba(240,232,216,.25)' }}>{item.turnaround}</div>}
                     {item.stripe_link && (
                       <Link href={item.stripe_link} target="_blank" style={{ fontSize: '.55rem', color: 'rgba(201,169,110,.4)', textDecoration: 'none', display: 'block', marginTop: '.35rem' }}>
@@ -512,16 +513,16 @@ export default function CatalogPage() {
 
                 {/* Price — always visible */}
                 <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.55rem', color: '#c9a96e', marginBottom: '.2rem', lineHeight: 1 }}>
-                  {formatPrice(item.price)}
+                  {formatPrice(item.price_display || item.price)}
                 </div>
 
                 {/* Turnaround */}
-                {item.turnaround && (
+                {(item.turnaround_time || item.turnaround) && (
                   <div style={{ fontSize: '.56rem', color: 'rgba(232,213,183,.22)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
-                    {item.turnaround}
+                    {item.turnaround_time || item.turnaround}
                   </div>
                 )}
-                {!item.turnaround && <div style={{ marginBottom: '1.25rem' }} />}
+                {!(item.turnaround_time || item.turnaround) && <div style={{ marginBottom: '1.25rem' }} />}
 
                 {/* Action buttons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '.45rem', marginTop: 'auto' }}>
