@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import NavBar from '@/components/NavBar';
 
 // ─────────────────────────────────────────────────────────────────
 //  OGraphy V4 — Contact Page (Final with validation)
@@ -240,26 +241,7 @@ function ContactPageInner() {
   return (
     <div style={{ minHeight: '100vh', background: '#0a0906', fontFamily: 'Montserrat, sans-serif', color: '#e8d5b7' }}>
 
-      {/* Nav — compact height */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        padding: '.45rem 4rem',  // reduced from .65rem
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: 'rgba(10,9,6,.97)', backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(201,169,110,.15)',
-      }}>
-        <Link href="/catalog" style={{ textDecoration: 'none' }}>
-          <img src="/logo.svg" alt="OGraphy" style={{ width: 148, height: 'auto', objectFit: 'contain' }} />
-        </Link>
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <Link href="/catalog" style={{ fontSize: '.6rem', letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', textDecoration: 'none' }}>← Services</Link>
-          {!isLoggedIn && (
-            <Link href="/login" style={{ fontSize: '.6rem', letterSpacing: '.12em', textTransform: 'uppercase', color: '#0a0906', background: '#c9a96e', padding: '.35rem .85rem', textDecoration: 'none' }}>
-              Sign In
-            </Link>
-          )}
-        </div>
-      </nav>
+      <NavBar />
 
       {/* Main content — reduced top padding so steps are visible */}
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '5.5rem 2rem 5rem' }}>

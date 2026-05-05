@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import NavBar from '@/components/NavBar';
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -105,10 +106,6 @@ export default function PortalPage() {
   const getStatusInfo = (status: string) =>
     STATUS_FLOW.find(s => s.key === status) || STATUS_FLOW[0];
 
-  const initials = user?.name
-    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : user?.email?.[0]?.toUpperCase() || '?';
-
   const activeProjects = projects.filter(p => !['completed', 'delivered'].includes(p.status || p.stage || '')).length;
   const completedProjects = projects.filter(p => ['completed', 'delivered'].includes(p.status || p.stage || '')).length;
 
@@ -148,52 +145,10 @@ export default function PortalPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#0a0906', fontFamily: 'Montserrat, sans-serif', color: '#e8d5b7' }}>
 
-      {/* Nav */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        padding: '.6rem 3rem', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', background: 'rgba(10,9,6,.97)',
-        backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(201,169,110,.12)',
-      }}>
-        <Link href="/catalog" style={{ textDecoration: 'none' }}>
-          <img src="/logo.svg" alt="OGraphy" style={{ width: 148, height: 'auto', display: 'block' }} />
-        </Link>
-
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <Link href="/portal/ai-studio" style={{ fontSize: '.6rem', letterSpacing: '.14em', textTransform: 'uppercase', color: '#c9a96e', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '.4rem', border: '1px solid rgba(201,169,110,.25)', padding: '.35rem .85rem' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2m-3.5-7.5-1.5 1.5M5 5l1.5 1.5M19 19l-1.5-1.5M5 19l1.5-1.5"/>
-            </svg>
-            AI Studio
-          </Link>
-          <Link href="/catalog" style={{ fontSize: '.6rem', letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', textDecoration: 'none' }}>
-            + Services
-          </Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: user.avatar ? 'transparent' : 'rgba(201,169,110,.12)',
-              border: '1px solid rgba(201,169,110,.25)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', fontSize: '.65rem', color: '#c9a96e', fontWeight: 500,
-            }}>
-              {user.avatar
-                ? <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : initials
-              }
-            </div>
-            <div style={{ fontSize: '.6rem', color: 'rgba(232,213,183,.35)' }}>
-              {user.name || user.email.split('@')[0]}
-            </div>
-            <button
-              onClick={handleSignOut}
-              style={{ fontSize: '.58rem', letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(232,213,183,.2)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' }}
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </nav>
+      <NavBar
+        user={{ email: user.email, full_name: user.name, avatar_url: user.avatar }}
+        onSignOut={handleSignOut}
+      />
 
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '7rem 3rem 5rem' }}>
 

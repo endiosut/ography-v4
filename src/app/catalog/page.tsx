@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import NavBar from '@/components/NavBar';
 
 // ─────────────────────────────────────────────────────────────────
 //  OGraphy V4 — Catalog Page (Complete Rebuild)
@@ -37,7 +38,6 @@ type CatalogItem = {
   image_url?: string;
 };
 type CartItem = CatalogItem & { qty: number };
-type User = { email: string; full_name?: string; avatar_url?: string };
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'All': [],
@@ -62,8 +62,6 @@ export default function CatalogPage() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [addedId, setAddedId] = useState<string | null>(null);
 
@@ -72,25 +70,6 @@ export default function CatalogPage() {
     const history = JSON.parse(sessionStorage.getItem('og_nav_history') || '[]');
     history.push({ page: 'catalog', time: Date.now() });
     sessionStorage.setItem('og_nav_history', JSON.stringify(history.slice(-10)));
-  }, []);
-
-  // Fetch user session
-  useEffect(() => {
-    const getUser = async () => {
-      try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const sb = createClient(SB_URL, SB_ANON);
-        const { data: { user: u } } = await sb.auth.getUser();
-        if (u) {
-          setUser({
-            email: u.email || '',
-            full_name: u.user_metadata?.full_name || u.user_metadata?.name,
-            avatar_url: u.user_metadata?.avatar_url,
-          });
-        }
-      } catch {}
-    };
-    getUser();
   }, []);
 
   useEffect(() => {
@@ -181,16 +160,6 @@ export default function CatalogPage() {
     window.location.href = `/contact?services=${encodeURIComponent(services)}`;
   };
 
-  const handleSignOut = async () => {
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const sb = createClient(SB_URL, SB_ANON);
-      await sb.auth.signOut();
-      setUser(null);
-      setProfileOpen(false);
-    } catch {}
-  };
-
   const formatPrice = (price: string | number | null | undefined): string => {
     if (price === null || price === undefined || price === '') return 'Contact for pricing';
     const s = String(price).trim();
@@ -201,118 +170,12 @@ export default function CatalogPage() {
     return s || 'Contact for pricing';
   };
 
-  const initials = user?.full_name
-    ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : user?.email?.[0]?.toUpperCase() || '?';
+
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0906', fontFamily: 'Montserrat, sans-serif', color: '#e8d5b7' }}>
 
-      {/* Nav */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        padding: '.65rem 4rem', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', background: 'rgba(10,9,6,.96)',
-        backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(201,169,110,.18)',
-      }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
-          <img src="/logo.svg" alt="OGraphy" style={{ width: 148, height: 'auto', objectFit: 'contain' }} />
-        </Link>
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <Link href="/contact" style={{ fontSize: '.62rem', letterSpacing: '.15em', textTransform: 'uppercase', color: 'rgba(201,169,110,.45)', textDecoration: 'none' }}>
-            Contact
-          </Link>
-          {user ? (
-            <Link href="/portal" style={{ fontSize: '.62rem', letterSpacing: '.15em', textTransform: 'uppercase', color: 'rgba(201,169,110,.45)', textDecoration: 'none' }}>
-              Portal
-            </Link>
-          ) : (
-            <Link href="/login" style={{ fontSize: '.62rem', letterSpacing: '.12em', textTransform: 'uppercase', color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.35rem .85rem', textDecoration: 'none' }}>
-              Sign In
-            </Link>
-          )}
-
-          {/* Cart Icon with badge */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setCartOpen(o => !o)}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '.35rem', display: 'flex', alignItems: 'center', color: '#c9a96e' }}
-              title="Cart"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <path d="M16 10a4 4 0 01-8 0"/>
-              </svg>
-              {cartCount > 0 && (
-                <span style={{
-                  position: 'absolute', top: '-4px', right: '-4px',
-                  background: '#c9a96e', color: '#0a0906',
-                  borderRadius: '50%', width: 16, height: 16,
-                  fontSize: '.48rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  lineHeight: 1,
-                }}>
-                  {cartCount > 9 ? '9+' : cartCount}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* User profile */}
-          {user && (
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setProfileOpen(o => !o)}
-                style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: user.avatar_url ? 'transparent' : 'rgba(201,169,110,.15)',
-                  border: '1px solid rgba(201,169,110,.3)',
-                  cursor: 'pointer', overflow: 'hidden',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#c9a96e', fontSize: '.6rem', fontWeight: 500,
-                }}
-              >
-                {user.avatar_url
-                  ? <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : initials
-                }
-              </button>
-              {profileOpen && (
-                <div style={{
-                  position: 'absolute', top: '100%', right: 0, marginTop: '.5rem',
-                  background: '#0f0d0a', border: '1px solid rgba(201,169,110,.15)',
-                  minWidth: 200, zIndex: 200, padding: '.75rem 0',
-                }}>
-                  <div style={{ padding: '.5rem 1.25rem 1rem', borderBottom: '1px solid rgba(201,169,110,.08)' }}>
-                    <div style={{ fontSize: '.72rem', color: '#e8d5b7', marginBottom: '.25rem' }}>{user.full_name || 'My Account'}</div>
-                    <div style={{ fontSize: '.62rem', color: 'rgba(232,213,183,.4)' }}>{user.email}</div>
-                  </div>
-                  {[
-                    { label: 'My Portal', href: '/portal' },
-                    { label: 'My Purchases', href: '/portal?tab=purchases' },
-                    { label: 'Account Settings', href: '/portal?tab=settings' },
-                  ].map(item => (
-                    <Link key={item.label} href={item.href} style={{ display: 'block', padding: '.6rem 1.25rem', fontSize: '.68rem', color: 'rgba(232,213,183,.55)', textDecoration: 'none', letterSpacing: '.08em' }}
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                  <div style={{ borderTop: '1px solid rgba(201,169,110,.08)', marginTop: '.5rem', paddingTop: '.5rem' }}>
-                    <button
-                      onClick={handleSignOut}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '.6rem 1.25rem', fontSize: '.65rem', color: 'rgba(224,112,112,.6)', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '.08em' }}
-                    >
-                      Sign Out
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </nav>
+      <NavBar />
 
       {/* ── CART SIDEBAR ── */}
       {cartOpen && (

@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { CartIcon, useCart } from '@/context/CartContext';
+import { useCart } from '@/context/CartContext';
+import NavBar from '@/components/NavBar';
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -37,19 +38,8 @@ const formatPrice = (price: string | number | null | undefined): string => {
 export default function HomePage() {
   const [featured, setFeatured] = useState<CatalogItem[]>([]);
   const [added, setAdded] = useState<string | null>(null);
-  const [sessionUser, setSessionUser] = useState<{ email: string } | null>(null);
 
   const { addToCart } = useCart();
-
-  // Auth check — show Portal only when logged in
-  useEffect(() => {
-    (async () => {
-      const { createClient } = await import('@supabase/supabase-js');
-      const sb = createClient(SB_URL, SB_ANON);
-      const { data: { user } } = await sb.auth.getUser();
-      if (user) setSessionUser({ email: user.email || '' });
-    })();
-  }, []);
 
   // Featured services fetch
   useEffect(() => {
@@ -75,27 +65,7 @@ export default function HomePage() {
   return (
     <div style={{ minHeight: '100vh', background: '#0a0906', fontFamily: 'Montserrat, sans-serif', color: '#e8d5b7', overflowX: 'hidden' }}>
 
-      {/* Nav */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        padding: '.65rem 4rem', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', background: 'rgba(10,9,6,.96)',
-        backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(201,169,110,.18)',
-      }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
-          <img src="/logo.svg" alt="OGraphy" style={{ width: 148, height: 'auto', objectFit: 'contain' }} />
-        </Link>
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-          <Link href="/catalog" style={{ fontSize: '.67rem', letterSpacing: '.17em', textTransform: 'uppercase', color: 'rgba(201,169,110,.5)', textDecoration: 'none' }}>Services</Link>
-          <Link href="/contact" style={{ fontSize: '.67rem', letterSpacing: '.17em', textTransform: 'uppercase', color: 'rgba(201,169,110,.5)', textDecoration: 'none' }}>Contact</Link>
-          {sessionUser ? (
-            <Link href="/portal" style={{ fontSize: '.67rem', letterSpacing: '.17em', textTransform: 'uppercase', color: 'rgba(201,169,110,.5)', textDecoration: 'none' }}>Portal</Link>
-          ) : (
-            <Link href="/login" style={{ fontSize: '.62rem', letterSpacing: '.12em', textTransform: 'uppercase', background: '#c9a96e', color: '#0a0906', padding: '.38rem .9rem', textDecoration: 'none', fontWeight: 500 }}>Sign In</Link>
-          )}
-          <CartIcon />
-        </div>
-      </nav>
+      <NavBar />
 
       {/* Hero */}
       <section style={{ minHeight: '90vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '8rem 4rem 4rem', maxWidth: 1100, margin: '0 auto' }}>
