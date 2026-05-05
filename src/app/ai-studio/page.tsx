@@ -82,7 +82,7 @@ export default function AIStudioPage() {
     try {
       const res = await fetch('/api/ai-studio/generate-brief', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent: briefInput }),
+        body: JSON.stringify({ prompt: briefInput }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

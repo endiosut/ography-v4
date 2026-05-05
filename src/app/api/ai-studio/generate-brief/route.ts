@@ -5,15 +5,15 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { intent } = await req.json();
-    if (!intent?.trim()) return NextResponse.json({ error: 'Intent required' }, { status: 400 });
+    const { prompt } = await req.json();
+    if (!prompt?.trim()) return NextResponse.json({ error: 'Prompt required' }, { status: 400 });
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{
         role: 'user',
-        content: `You are OGraphy's creative brief AI. A client has described their intent: "${intent}"
+        content: `You are OGraphy's creative brief AI. A client has described their intent: "${prompt}"
 
 Return a JSON object with this exact structure:
 {

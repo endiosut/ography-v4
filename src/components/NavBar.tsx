@@ -109,6 +109,7 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
 
       <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
         <Link href="/catalog" style={linkStyle('/catalog')}>Services</Link>
+        <Link href="/ai-studio" style={linkStyle('/ai-studio')}>AI Studio</Link>
         <Link href="/contact" style={linkStyle('/contact')}>Contact</Link>
 
         {/* Auth-aware right section */}
