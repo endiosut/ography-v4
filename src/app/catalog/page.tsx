@@ -76,9 +76,13 @@ export default function CatalogPage() {
     const fetchItems = async () => {
       try {
         const res = await fetch(
-          `${SB_URL}/rest/v1/catalog_items?select=id,name,category,description,price,price_display,turnaround_time,stripe_link,image_url&order=category,name`,
+          `${SB_URL}/rest/v1/catalog_items?select=*&order=category,name`,
           { headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` } }
         );
+        if (!res.ok) {
+          console.error('Catalog fetch failed:', res.status, await res.text());
+          return;
+        }
         const data = await res.json();
         const clean = (Array.isArray(data) ? data : [])
           .filter((i: CatalogItem) => i.name && i.name !== 'ffdfd' && i.name !== 'dfdf');
@@ -162,7 +166,9 @@ export default function CatalogPage() {
 
   const formatPrice = (price: string | number | null | undefined): string => {
     if (price === null || price === undefined || price === '') return 'Contact for pricing';
+    if (typeof price === 'number') return price > 0 ? `$${price.toLocaleString()}` : 'Contact for pricing';
     const s = String(price).trim();
+    if (!s) return 'Contact for pricing';
     if (s.startsWith('$') || s.toLowerCase().startsWith('from')) return s;
     if (/^\d+(\.\d+)?$/.test(s)) return `$${parseFloat(s).toLocaleString()}`;
     const n = parseFloat(s.replace(/[^0-9.]/g, ''));

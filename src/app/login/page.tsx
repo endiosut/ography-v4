@@ -15,8 +15,8 @@ export default function LoginPage() {
   const [showAdmin, setShowAdmin] = useState(false);
 
   const getSupabase = async () => {
-    const { createClient } = await import('@supabase/supabase-js');
-    return createClient(SB_URL, SB_ANON);
+    const { createBrowserClient } = await import('@supabase/ssr');
+    return createBrowserClient(SB_URL, SB_ANON);
   };
 
   const handleGoogle = async () => {
