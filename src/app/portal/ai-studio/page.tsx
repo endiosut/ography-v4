@@ -257,7 +257,7 @@ export default function AIStudioPage() {
             </div>
             <div>
               <div style={{ fontSize: '.5rem', letterSpacing: '.28em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)' }}>OGraphy</div>
-              <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.5rem', fontWeight: 300, color: '#f0e8d8', lineHeight: 1 }}>AI Studio</div>
+              <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.5rem', fontWeight: 300, color: '#f0e8d8', lineHeight: 1 }}>Projects</div>
             </div>
           </div>
           <p style={{ fontSize: '.72rem', color: 'rgba(232,213,183,.35)', lineHeight: 1.8, maxWidth: 560 }}>

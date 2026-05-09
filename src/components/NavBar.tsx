@@ -109,7 +109,7 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
 
       <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
         <Link href="/catalog" style={linkStyle('/catalog')}>Services</Link>
-        <Link href="/ai-studio" style={linkStyle('/ai-studio')}>AI Studio</Link>
+        <Link href="/ai-studio" style={linkStyle('/ai-studio')}>Projects</Link>
         <Link href="/contact" style={linkStyle('/contact')}>Contact</Link>
 
         {/* Auth-aware right section */}
@@ -155,7 +155,7 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
                 </div>
                 {(isAdmin
                   ? [{ label: 'Admin Dashboard', href: '/admin' }, { label: 'Analytics', href: '/admin/analytics' }]
-                  : [{ label: 'My Portal', href: '/portal' }, { label: 'AI Studio', href: '/portal/ai-studio' }]
+                  : [{ label: 'My Portal', href: '/portal' }, { label: 'Projects', href: '/portal/ai-studio' }]
                 ).map(item => (
                   <Link key={item.label} href={item.href}
                     onClick={() => setProfileOpen(false)}

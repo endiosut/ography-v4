@@ -199,7 +199,7 @@ export default function PortalPage() {
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: '.65rem', color: '#c9a96e', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '.2rem' }}>AI Studio</div>
+                <div style={{ fontSize: '.65rem', color: '#c9a96e', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '.2rem' }}>Projects</div>
                 <div style={{ fontSize: '.75rem', color: 'rgba(232,213,183,.55)', lineHeight: 1.5 }}>Generate briefs, explore aesthetics, get brand guidance</div>
               </div>
             </div>
@@ -260,7 +260,7 @@ export default function PortalPage() {
                     Start a Project →
                   </Link>
                   <Link href="/portal/ai-studio" style={{ display: 'inline-block', background: 'transparent', color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
-                    Try AI Studio
+                    Open Projects
                   </Link>
                 </div>
               </div>
