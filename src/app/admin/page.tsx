@@ -32,7 +32,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     Promise.all([getAdminStats(), getProjects()]).then(([s, p]) => {
       setStats(s); setProjects(p.slice(0, 8)); setLoading(false)
-    }).catch(() => setLoading(false))
+    }).catch(() => { setStats(null); setProjects([]); setLoading(false) })
   }, [])
 
   const active = projects.filter(p => p.stage !== 'completed')
@@ -57,9 +57,9 @@ export default function AdminDashboard() {
             {/* KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1px', background: 'var(--border)', border: '1px solid var(--border)', marginBottom: '2.5rem' }}>
               {[
-                { label: 'Active Projects', value: stats?.active ?? 0 },
-                { label: 'Pipeline Value', value: stats ? `$${stats.pipeline.toLocaleString()}` : '—' },
-                { label: 'Total Earned', value: stats ? `$${stats.earned.toLocaleString()}` : '—' },
+                { label: 'Active Projects', value: stats?.activeProjects ?? 0 },
+                { label: 'Pipeline Value', value: stats ? `$${(stats.pipelineValue ?? 0).toLocaleString()}` : '—' },
+                { label: 'Total Earned', value: stats ? `$${(stats.totalEarned ?? 0).toLocaleString()}` : '—' },
                 { label: 'Total Clients', value: stats?.totalClients ?? 0 },
               ].map(({ label, value }) => (
                 <div key={label} style={{ background: 'var(--dark)', padding: '1.5rem' }}>

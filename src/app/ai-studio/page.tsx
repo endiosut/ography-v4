@@ -150,7 +150,7 @@ export default function AIStudioPage() {
         <div style={{ marginBottom: '2.5rem' }}>
           <div style={{ fontSize: '.5rem', letterSpacing: '.3em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', marginBottom: '.5rem' }}>OGraphy Studio</div>
           <h1 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 'clamp(1.8rem,4vw,2.8rem)', fontWeight: 300, color: '#f0e8d8', marginBottom: '.4rem' }}>
-            Projects
+            AI Studio
           </h1>
           <p style={{ fontSize: '.7rem', color: 'rgba(232,213,183,.35)', lineHeight: 1.7 }}>
             Generate briefs, explore aesthetics, and get brand guidance — powered by Claude.
