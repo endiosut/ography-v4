@@ -76,8 +76,11 @@ export default function CatalogPage() {
     const fetchItems = async () => {
       try {
         const res = await fetch(
-          `${SB_URL}/rest/v1/catalog_items?select=*&order=category,name`,
-          { headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` } }
+          `${SB_URL}/rest/v1/catalog_items?select=id,name,category,description,price,price_display,turnaround_time,stripe_link,image_url&order=category,name`,
+          {
+            headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+            cache: 'no-store',
+          }
         );
         if (!res.ok) {
           console.error('Catalog fetch failed:', res.status, await res.text());

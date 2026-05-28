@@ -54,23 +54,34 @@ export type Deliverable = {
 
 // Admin queries
 export async function getAdminStats() {
-  const [clients, projects, payments] = await Promise.all([
-    supabase.from('clients').select('id, status', { count: 'exact' }),
-    supabase.from('projects').select('id, stage, total_amount_usd', { count: 'exact' }),
-    supabase.from('payments').select('id, amount_usd, status', { count: 'exact' }),
-  ])
-  const activeProjects = (projects.data || []).filter(p => p.stage !== 'completed').length
-  const totalEarned = (payments.data || []).filter(p => p.status === 'paid').reduce((s, p) => s + (p.amount_usd || 0), 0)
-  const pendingPayments = (payments.data || []).filter(p => p.status === 'pending').reduce((s, p) => s + (p.amount_usd || 0), 0)
-  const pipelineValue = (projects.data || []).filter(p => p.stage !== 'completed').reduce((s, p) => s + (p.total_amount_usd || 0), 0)
-  return { activeProjects, totalEarned, pendingPayments, pipelineValue, totalClients: clients.count || 0 }
+  try {
+    const [clients, projects, payments] = await Promise.all([
+      supabase.from('clients').select('id, status', { count: 'exact' }),
+      supabase.from('projects').select('id, stage, total_amount_usd', { count: 'exact' }),
+      supabase.from('payments').select('id, amount_usd, status', { count: 'exact' }),
+    ])
+    const activeProjects = (projects.data || []).filter(p => p.stage !== 'completed').length
+    const totalEarned = (payments.data || []).filter(p => p.status === 'paid').reduce((s, p) => s + (p.amount_usd || 0), 0)
+    const pendingPayments = (payments.data || []).filter(p => p.status === 'pending').reduce((s, p) => s + (p.amount_usd || 0), 0)
+    const pipelineValue = (projects.data || []).filter(p => p.stage !== 'completed').reduce((s, p) => s + (p.total_amount_usd || 0), 0)
+    return { activeProjects, totalEarned, pendingPayments, pipelineValue, totalClients: clients.count || 0 }
+  } catch (e) {
+    console.error('getAdminStats error:', e)
+    return { activeProjects: 0, totalEarned: 0, pendingPayments: 0, pipelineValue: 0, totalClients: 0 }
+  }
 }
 
 export async function getProjects() {
-  const { data } = await supabase.from('projects')
-    .select('*, clients(name, email)')
-    .order('created_at', { ascending: false })
-  return data || []
+  try {
+    const { data, error } = await supabase.from('projects')
+      .select('*, clients(name, email)')
+      .order('created_at', { ascending: false })
+    if (error) console.error('getProjects error:', error)
+    return data || []
+  } catch (e) {
+    console.error('getProjects error:', e)
+    return []
+  }
 }
 
 export async function getCatalogItems() {
