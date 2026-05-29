@@ -1,17 +1,15 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CartIcon } from '@/context/CartContext';
 
 const ADMIN_EMAIL = 'endiosut.eo@gmail.com';
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 type NavUser = { email: string; full_name?: string; avatar_url?: string } | null;
 
 interface NavBarProps {
-  /** Pre-pass user if parent already fetched it; otherwise NavBar fetches itself */
   user?: NavUser;
   onSignOut?: () => void;
 }
@@ -23,14 +21,12 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // Scroll listener — compress nav after 30px
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 30);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Close profile dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -41,28 +37,39 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch auth only if not provided by parent
+  // Fetch auth only if not provided by parent — createBrowserClient inside useEffect
   useEffect(() => {
     if (userProp !== undefined) return;
-    (async () => {
-      try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const sb = createClient(SB_URL, SB_ANON);
-        const { data: { user: u } } = await sb.auth.getUser();
-        if (u) setUser({ email: u.email || '', full_name: u.user_metadata?.full_name || u.user_metadata?.name, avatar_url: u.user_metadata?.avatar_url });
-      } catch {}
-    })();
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!url || !key) return;
+      const sb = createBrowserClient(url, key);
+      sb.auth.getUser().then(({ data: { user: u } }) => {
+        if (u) setUser({
+          email: u.email || '',
+          full_name: u.user_metadata?.full_name || u.user_metadata?.name,
+          avatar_url: u.user_metadata?.avatar_url,
+        });
+      }).catch(e => console.error('[NavBar] getUser error:', e));
+    } catch (e) {
+      console.error('[NavBar] auth init error:', e);
+    }
   }, [userProp]);
 
   const handleSignOut = async () => {
     try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const sb = createClient(SB_URL, SB_ANON);
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!url || !key) return;
+      const sb = createBrowserClient(url, key);
       await sb.auth.signOut();
       setUser(null);
       setProfileOpen(false);
       onSignOut?.();
-    } catch {}
+    } catch (e) {
+      console.error('[NavBar] signOut error:', e);
+    }
   };
 
   const isAdmin = user?.email === ADMIN_EMAIL;
@@ -76,7 +83,9 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
     textDecoration: 'none',
     borderBottom: isActive(href) ? '1px solid rgba(201,169,110,.45)' : '1px solid transparent',
     paddingBottom: 2,
-    transition: 'color .2s, border-color .2s',
+    transition: 'color .3s cubic-bezier(0.16,1,0.3,1), border-color .3s cubic-bezier(0.16,1,0.3,1)',
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   });
 
   const initials = user?.full_name
@@ -85,24 +94,34 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
 
   return (
     <nav style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-      padding: scrolled ? '.45rem 4rem' : '.65rem 4rem',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      background: scrolled ? 'rgba(10,9,6,.52)' : 'rgba(10,9,6,.96)',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 100,
+      height: 40,
+      padding: '0 2.5rem',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      background: scrolled ? 'rgba(10,9,6,.55)' : 'rgba(10,9,6,.95)',
       backdropFilter: scrolled ? 'blur(32px)' : 'blur(20px)',
-      borderBottom: '1px solid rgba(201,169,110,.18)',
-      transition: 'all 0.35s cubic-bezier(0.16,1,0.3,1)',
+      borderBottom: scrolled
+        ? '1px solid rgba(201,169,110,.06)'
+        : '1px solid rgba(201,169,110,.18)',
+      borderRadius: '0 0 12px 12px',
+      transition: 'background 0.3s cubic-bezier(0.16,1,0.3,1), backdrop-filter 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s cubic-bezier(0.16,1,0.3,1)',
     }}>
-      <Link href="/" style={{ textDecoration: 'none', lineHeight: 0 }}>
+      <Link href="/" style={{ textDecoration: 'none', lineHeight: 0, WebkitTapHighlightColor: 'transparent' }}>
         <img
           src="/logo.svg"
           alt="OGraphy"
           style={{
-            width: scrolled ? 118 : 148,
+            width: 88,
             height: 'auto',
             objectFit: 'contain',
             opacity: scrolled ? 0.75 : 1,
-            transition: 'all 0.35s cubic-bezier(0.16,1,0.3,1)',
+            transition: 'opacity 0.3s cubic-bezier(0.16,1,0.3,1)',
           }}
         />
       </Link>
@@ -112,9 +131,17 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
         <Link href="/ai-studio" style={linkStyle('/ai-studio')}>AI Studio</Link>
         <Link href="/contact" style={linkStyle('/contact')}>Contact</Link>
 
-        {/* Auth-aware right section */}
         {!user ? (
-          <Link href="/login" style={{ fontSize: '.62rem', letterSpacing: '.12em', textTransform: 'uppercase', background: '#c9a96e', color: '#0a0906', padding: '.38rem .9rem', textDecoration: 'none', fontWeight: 500 }}>
+          <Link
+            href="/login"
+            style={{
+              fontSize: '.62rem', letterSpacing: '.12em', textTransform: 'uppercase',
+              background: '#c9a96e', color: '#0a0906', padding: '.38rem .9rem',
+              textDecoration: 'none', fontWeight: 500,
+              WebkitTapHighlightColor: 'transparent',
+              touchAction: 'manipulation',
+            }}
+          >
             Sign In
           </Link>
         ) : isAdmin ? (
@@ -125,19 +152,20 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
 
         <CartIcon />
 
-        {/* Profile avatar (when logged in) */}
         {user && (
           <div ref={profileRef} style={{ position: 'relative' }}>
             <button
               onClick={() => setProfileOpen(o => !o)}
               style={{
-                width: 30, height: 30, borderRadius: '50%',
+                width: 28, height: 28, borderRadius: '50%',
                 background: user.avatar_url ? 'transparent' : 'rgba(201,169,110,.12)',
                 border: '1px solid rgba(201,169,110,.3)',
                 cursor: 'pointer', overflow: 'hidden',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: '#c9a96e', fontSize: '.58rem', fontWeight: 500,
-              }}
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
+              } as React.CSSProperties}
             >
               {user.avatar_url
                 ? <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -148,6 +176,7 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
                 position: 'absolute', top: 'calc(100% + 8px)', right: 0,
                 background: '#0f0d0a', border: '1px solid rgba(201,169,110,.15)',
                 minWidth: 200, zIndex: 200, padding: '.75rem 0',
+                borderRadius: '0 0 8px 8px',
               }}>
                 <div style={{ padding: '.5rem 1.25rem 1rem', borderBottom: '1px solid rgba(201,169,110,.08)' }}>
                   <div style={{ fontSize: '.72rem', color: '#e8d5b7', marginBottom: '.2rem' }}>{user.full_name || 'My Account'}</div>
@@ -164,7 +193,17 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
                   </Link>
                 ))}
                 <div style={{ borderTop: '1px solid rgba(201,169,110,.08)', marginTop: '.5rem', paddingTop: '.5rem' }}>
-                  <button onClick={handleSignOut} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '.6rem 1.25rem', fontSize: '.65rem', color: 'rgba(224,112,112,.6)', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '.08em', fontFamily: 'Montserrat, sans-serif' }}>
+                  <button
+                    onClick={handleSignOut}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '.6rem 1.25rem', fontSize: '.65rem',
+                      color: 'rgba(224,112,112,.6)', background: 'none', border: 'none',
+                      cursor: 'pointer', letterSpacing: '.08em', fontFamily: 'Montserrat, sans-serif',
+                      WebkitTapHighlightColor: 'transparent',
+                      touchAction: 'manipulation',
+                    } as React.CSSProperties}
+                  >
                     Sign Out
                   </button>
                 </div>
