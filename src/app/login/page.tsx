@@ -1,10 +1,16 @@
 'use client';
 import { useState } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 
 const ADMIN_EMAIL = 'endiosut.eo@gmail.com';
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+function getSupabase() {
+  // Read env vars at call time, never at module level
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return createBrowserClient(url, key);
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -14,20 +20,18 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
 
-  const getSupabase = async () => {
-    const { createBrowserClient } = await import('@supabase/ssr');
-    return createBrowserClient(SB_URL, SB_ANON);
-  };
-
   const handleGoogle = async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-      const sb = await getSupabase();
-      await sb.auth.signInWithOAuth({
+      const sb = getSupabase();
+      const { error: err } = await sb.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
-    } catch {
+      if (err) throw err;
+    } catch (e: any) {
+      console.error('Google sign-in error:', e);
       setError('Google sign-in failed. Try again.');
       setLoading(false);
     }
@@ -35,9 +39,10 @@ export default function LoginPage() {
 
   const handleMagicLink = async () => {
     if (!email) return;
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-      const sb = await getSupabase();
+      const sb = getSupabase();
       const { error: err } = await sb.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
@@ -45,25 +50,34 @@ export default function LoginPage() {
       if (err) throw err;
       setSent(true);
     } catch (e: any) {
+      console.error('Magic link error:', e);
       setError(e.message || 'Something went wrong.');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAdminLogin = async () => {
     if (!email || !password) return;
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-      const sb = await getSupabase();
+      const sb = getSupabase();
       const { data, error: err } = await sb.auth.signInWithPassword({ email, password });
       if (err) throw err;
-      if (data.user?.email === ADMIN_EMAIL) {
-        window.location.href = '/admin';
-      } else {
-        window.location.href = '/portal';
-      }
-    } catch {
+      window.location.href = data.user?.email === ADMIN_EMAIL ? '/admin' : '/portal';
+    } catch (e: any) {
+      console.error('Admin login error:', e);
       setError('Invalid credentials.');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mobileTap = {
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation' as const,
+    userSelect: 'none' as const,
   };
 
   return (
@@ -107,6 +121,7 @@ export default function LoginPage() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 gap: '.85rem', marginBottom: '1.25rem', transition: 'all .2s',
                 opacity: loading ? 0.6 : 1,
+                ...mobileTap,
               }}
               onMouseEnter={e => {
                 (e.currentTarget as HTMLElement).style.borderColor = '#c9a96e';
@@ -165,6 +180,7 @@ export default function LoginPage() {
                 fontSize: '.68rem', letterSpacing: '.14em', textTransform: 'uppercase',
                 cursor: loading || !email ? 'not-allowed' : 'pointer',
                 opacity: loading || !email ? 0.5 : 1, transition: 'all .2s',
+                ...mobileTap,
               }}
             >
               {loading ? '...' : 'Send Sign-In Link'}
@@ -192,8 +208,10 @@ export default function LoginPage() {
               Sign-in link sent to <strong style={{ color: '#c9a96e' }}>{email}</strong>
             </div>
             <div style={{ fontSize: '.62rem', color: 'rgba(240,232,216,.2)', marginTop: '.75rem' }}>Expires in 1 hour</div>
-            <button onClick={() => { setSent(false); setEmail(''); }}
-              style={{ marginTop: '1.5rem', background: 'none', border: 'none', color: 'rgba(201,169,110,.4)', fontSize: '.6rem', cursor: 'pointer', letterSpacing: '.08em' }}>
+            <button
+              onClick={() => { setSent(false); setEmail(''); }}
+              style={{ marginTop: '1.5rem', background: 'none', border: 'none', color: 'rgba(201,169,110,.4)', fontSize: '.6rem', cursor: 'pointer', letterSpacing: '.08em', ...mobileTap }}
+            >
               Use a different email
             </button>
           </div>
@@ -211,13 +229,18 @@ export default function LoginPage() {
                 onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
                 style={{ padding: '.85rem 1.1rem', background: 'rgba(25,22,15,.9)', border: '1px solid rgba(201,169,110,.18)', color: '#f0e8d8', fontFamily: 'Montserrat, sans-serif', fontSize: '.82rem', outline: 'none' }} />
               {error && <div style={{ fontSize: '.68rem', color: '#e07070', padding: '.5rem .75rem', background: 'rgba(224,112,112,.06)' }}>{error}</div>}
-              <button onClick={handleAdminLogin} disabled={loading}
-                style={{ padding: '1rem', background: '#c9a96e', color: '#0a0906', border: 'none', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', fontSize: '.7rem', fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', opacity: loading ? 0.6 : 1 }}>
+              <button
+                onClick={handleAdminLogin}
+                disabled={loading}
+                style={{ padding: '1rem', background: '#c9a96e', color: '#0a0906', border: 'none', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', fontSize: '.7rem', fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', opacity: loading ? 0.6 : 1, ...mobileTap }}
+              >
                 {loading ? '...' : 'Enter Studio'}
               </button>
             </div>
-            <button onClick={() => setShowAdmin(false)}
-              style={{ display: 'block', margin: '1.25rem auto 0', background: 'none', border: 'none', color: 'rgba(240,232,216,.15)', fontSize: '.58rem', cursor: 'pointer', letterSpacing: '.08em' }}>
+            <button
+              onClick={() => setShowAdmin(false)}
+              style={{ display: 'block', margin: '1.25rem auto 0', background: 'none', border: 'none', color: 'rgba(240,232,216,.15)', fontSize: '.58rem', cursor: 'pointer', letterSpacing: '.08em', ...mobileTap }}
+            >
               ← Back to client login
             </button>
           </div>
@@ -228,8 +251,10 @@ export default function LoginPage() {
             OGraphy V4 · Studio Platform
           </div>
           {!showAdmin && (
-            <button onClick={() => setShowAdmin(true)}
-              style={{ background: 'none', border: 'none', color: 'rgba(240,232,216,.06)', fontSize: '.45rem', cursor: 'pointer', letterSpacing: '.06em' }}>
+            <button
+              onClick={() => setShowAdmin(true)}
+              style={{ background: 'none', border: 'none', color: 'rgba(240,232,216,.06)', fontSize: '.45rem', cursor: 'pointer', letterSpacing: '.06em', ...mobileTap }}
+            >
               studio
             </button>
           )}
