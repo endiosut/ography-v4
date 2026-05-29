@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
 import AdminSidebar from '@/components/AdminSidebar'
-import { getAdminStats, getProjects, type Project } from '@/lib/supabase'
 import Link from 'next/link'
 
 const STAGE_LABELS: Record<string, string> = {
@@ -14,29 +14,82 @@ const STAGE_LABELS: Record<string, string> = {
   completed: 'Completed',
 }
 
-const STAGE_COLORS: Record<string, string> = {
-  payment_received: 'var(--gold)',
-  brief_submitted: '#f39c12',
-  in_production: '#2980b9',
-  review: '#8e44ad',
-  revision: '#e67e22',
-  delivering: '#27ae60',
-  completed: '#27ae60',
+type Project = {
+  id: string
+  service_name: string
+  stage: string
+  total_amount_usd: number | null
+  created_at: string
+  clients?: { name: string; email: string } | null
+}
+
+type Stats = {
+  activeProjects: number
+  pipelineValue: number
+  totalEarned: number
+  totalClients: number
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<Stats | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([getAdminStats(), getProjects()]).then(([s, p]) => {
-      setStats(s); setProjects(p.slice(0, 8)); setLoading(false)
-    }).catch(() => { setStats(null); setProjects([]); setLoading(false) })
+    // Log env vars (first 10 chars only) to verify they are defined
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    console.log('[Admin] NEXT_PUBLIC_SUPABASE_URL:', url ? url.slice(0, 10) + '...' : 'UNDEFINED')
+    console.log('[Admin] NEXT_PUBLIC_SUPABASE_ANON_KEY:', key ? key.slice(0, 10) + '...' : 'UNDEFINED')
+
+    if (!url || !key) {
+      const msg = 'Supabase env vars are undefined — check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
+      console.error('[Admin]', msg)
+      setError(msg)
+      setLoading(false)
+      return
+    }
+
+    // createBrowserClient MUST be inside useEffect — never at module level
+    const supabase = createBrowserClient(url, key)
+
+    Promise.all([
+      supabase.from('clients').select('id, status', { count: 'exact' }),
+      supabase.from('projects').select('*, clients(name, email)').order('created_at', { ascending: false }).limit(20),
+      supabase.from('payments').select('id, amount_usd, status', { count: 'exact' }),
+    ]).then(([clientsRes, projectsRes, paymentsRes]) => {
+      if (clientsRes.error) console.error('[Admin] clients error:', clientsRes.error)
+      if (projectsRes.error) console.error('[Admin] projects error:', projectsRes.error)
+      if (paymentsRes.error) console.error('[Admin] payments error:', paymentsRes.error)
+
+      const allProjects: Project[] = projectsRes.data ?? []
+      const allPayments = paymentsRes.data ?? []
+
+      const activeProjects = allProjects.filter(p => p.stage !== 'completed').length
+      const pipelineValue = allProjects
+        .filter(p => p.stage !== 'completed')
+        .reduce((s, p) => s + (p.total_amount_usd ?? 0), 0)
+      const totalEarned = allPayments
+        .filter((p: any) => p.status === 'paid')
+        .reduce((s: number, p: any) => s + (p.amount_usd ?? 0), 0)
+
+      setStats({
+        activeProjects,
+        pipelineValue,
+        totalEarned,
+        totalClients: clientsRes.count ?? 0,
+      })
+      setProjects(allProjects.slice(0, 8))
+    }).catch(err => {
+      console.error('[Admin] fetch failed:', err)
+      setError(err?.message ?? 'Unknown fetch error')
+    }).finally(() => {
+      setLoading(false)
+    })
   }, [])
 
-  const active = projects.filter(p => p.stage !== 'completed')
-  const stageGroups = ['payment_received','brief_submitted','in_production','review','revision','delivering']
+  const stageGroups = ['payment_received', 'brief_submitted', 'in_production', 'review', 'revision', 'delivering']
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -51,15 +104,19 @@ export default function AdminDashboard() {
         </div>
 
         {loading ? (
-          <div style={{ color: 'var(--cream-muted)', fontSize: '.85rem' }}>Loading...</div>
+          <div style={{ color: 'var(--cream-muted)', fontSize: '.85rem' }}>Loading dashboard...</div>
+        ) : error ? (
+          <div style={{ color: '#e74c3c', fontSize: '.85rem', padding: '1rem', border: '1px solid #e74c3c', background: 'rgba(231,76,60,.08)' }}>
+            Error: {error}
+          </div>
         ) : (
           <>
             {/* KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1px', background: 'var(--border)', border: '1px solid var(--border)', marginBottom: '2.5rem' }}>
               {[
                 { label: 'Active Projects', value: stats?.activeProjects ?? 0 },
-                { label: 'Pipeline Value', value: stats ? `$${(stats.pipelineValue ?? 0).toLocaleString()}` : '—' },
-                { label: 'Total Earned', value: stats ? `$${(stats.totalEarned ?? 0).toLocaleString()}` : '—' },
+                { label: 'Pipeline Value', value: `$${(stats?.pipelineValue ?? 0).toLocaleString()}` },
+                { label: 'Total Earned', value: `$${(stats?.totalEarned ?? 0).toLocaleString()}` },
                 { label: 'Total Clients', value: stats?.totalClients ?? 0 },
               ].map(({ label, value }) => (
                 <div key={label} style={{ background: 'var(--dark)', padding: '1.5rem' }}>
