@@ -30,8 +30,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', origin));
   }
 
-  const email = data.session.user.email || '';
-  const dest = email === ADMIN_EMAIL ? '/admin' : '/portal';
+  // Route by claim first, hardcoded email only as a fallback — same rule as
+  // middleware.ts and login/page.tsx, so the owner and a client traverse
+  // identical code. Honour ?next= for deep links, rejecting absolute URLs.
+  const u = data.session.user;
+  const role = (u.app_metadata as Record<string, unknown> | undefined)?.role;
+  const isAdmin = role === 'admin' || role === 'ops'
+    || (u.email || '').toLowerCase() === ADMIN_EMAIL;
+
+  const nextParam = searchParams.get('next');
+  const safeNext =
+    nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
+
+  let dest = safeNext || (isAdmin ? '/admin' : '/portal');
+  if (dest.startsWith('/admin') && !isAdmin) dest = '/portal';
+
   const response = NextResponse.redirect(new URL(dest, origin));
 
   pendingCookies.forEach(({ name, value, options }) =>

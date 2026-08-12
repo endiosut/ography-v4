@@ -1,8 +1,12 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import AdminSidebar from '@/components/AdminSidebar'
 import Link from 'next/link'
+
+// NOTE: force-dynamic lives in ./layout.tsx — route segment config is ignored
+// in 'use client' files. See the comment there.
 
 const STAGE_LABELS: Record<string, string> = {
   payment_received: 'Payment Received',

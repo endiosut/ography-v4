@@ -1,31 +1,113 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createBrowserClient } from '@supabase/ssr';
 import NavBar from '@/components/NavBar';
 
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// NOTE: force-dynamic lives in ./layout.tsx — route segment config is ignored
+// in 'use client' files. See the comment there.
 
+// FIX A (P1, root cause of the empty portal) ────────────────────────────────
+// This page previously used `createClient` from '@supabase/supabase-js', which
+// reads the session from **localStorage**. Every other auth surface in this app
+// — middleware.ts, auth/callback/route.ts and login/page.tsx — uses
+// '@supabase/ssr', which reads the session from **cookies**.
+//
+// Result: after Google OAuth or magic link the code exchange happens
+// server-side, so cookies are set and localStorage is never written. Middleware
+// saw a valid user and let the request through; this page then found no session
+// and rendered the "Sign in to access your portal" screen. Clicking that button
+// returned to /login, where middleware saw the user WAS signed in and redirected
+// straight back here — an infinite loop with no data and no exit.
+//
+// That is why testers reported being stuck on /portal.
+//
+// FIX B — env vars are read inside the factory, never at module scope. Module
+// level `process.env.X!` throws at module init if the var is missing and blanks
+// the whole route. This bug was fixed in login/page.tsx (cd1671f5) and
+// admin/page.tsx (d0e0ede7) but never here.
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    console.error(
+      '[portal] Missing Supabase env vars.',
+      'URL set:', Boolean(url),
+      'ANON set:', Boolean(key)
+    );
+    throw new Error('Supabase configuration missing');
+  }
+  return createBrowserClient(url, key);
+}
+
+// FIX C — the stage vocabulary must match the database.
+// `projects.stage` defaults to 'payment_received' in Postgres, but the old
+// STATUS_FLOW keys were lead/confirmed/in_production/review/delivered/completed.
+// getStatusIndex('payment_received') returned -1, so the progress bar rendered
+// zero filled segments for every real project — the tracker always looked frozen.
+// Keys below are the database values. `STAGE_ALIASES` maps legacy strings so
+// older rows still resolve instead of falling off the end.
 const STATUS_FLOW = [
-  { key: 'lead', label: 'Request Received', icon: '📥', color: '#6b6355' },
-  { key: 'confirmed', label: 'Confirmed', icon: '✅', color: '#4a7a9e' },
-  { key: 'in_production', label: 'In Production', icon: '⚡', color: '#c9a96e' },
-  { key: 'review', label: 'Under Review', icon: '🔍', color: '#9e7a4a' },
-  { key: 'delivered', label: 'Delivered', icon: '📦', color: '#4a9e6b' },
-  { key: 'completed', label: 'Completed', icon: '🏆', color: '#c9a96e' },
+  { key: 'payment_received', label: 'Payment Received', icon: '📥', color: '#6b6355' },
+  { key: 'brief_submitted',  label: 'Brief Received',   icon: '📝', color: '#4a7a9e' },
+  { key: 'in_production',    label: 'In Production',    icon: '⚡', color: '#c9a96e' },
+  { key: 'review',           label: 'Under Review',     icon: '🔍', color: '#9e7a4a' },
+  { key: 'delivered',        label: 'Delivered',        icon: '📦', color: '#4a9e6b' },
+  { key: 'completed',        label: 'Completed',        icon: '🏆', color: '#c9a96e' },
 ];
+
+const STAGE_ALIASES: Record<string, string> = {
+  lead: 'payment_received',
+  confirmed: 'brief_submitted',
+  brief: 'brief_submitted',
+  production: 'in_production',
+  qa: 'review',
+  client_review: 'review',
+  complete: 'completed',
+};
+
+function normaliseStage(raw?: string | null): string {
+  const s = (raw || '').trim();
+  if (!s) return STATUS_FLOW[0].key;
+  if (STATUS_FLOW.some(f => f.key === s)) return s;
+  return STAGE_ALIASES[s] || STATUS_FLOW[0].key;
+}
 
 type Project = {
   id: string;
-  name: string;
-  status: string;
+  project_ref?: string | null;
   service_name?: string;
   stage?: string;
   created_at: string;
   updated_at: string;
+  deadline?: string | null;
+  delivered_at?: string | null;
+  total_amount_usd?: number | null;
+  deposit_paid_usd?: number | null;
+  balance_due_usd?: number | null;
   notes?: string;
-  service?: string;
-  deliverable_url?: string;
+};
+
+// FIX D — deliverables live in their own table keyed on project_id.
+// There is no `projects.deliverable_url` column; the old code read one and the
+// Download button therefore never appeared, even after delivery.
+type Deliverable = {
+  id: string;
+  project_id: string;
+  file_name: string | null;
+  file_url: string | null;
+  version: number | null;
+  is_final: boolean | null;
+};
+
+type Payment = {
+  id: string;
+  project_id: string | null;
+  amount_usd: number | null;
+  status: string | null;
+  paid_at: string | null;
+  receipt_url: string | null;
 };
 
 type Client = {
@@ -42,6 +124,8 @@ export default function PortalPage() {
   const [user, setUser] = useState<{ email: string; name?: string; avatar?: string } | null>(null);
   const [client, setClient] = useState<Client | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [catalogCount, setCatalogCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'projects' | 'purchases' | 'settings'>('projects');
@@ -50,8 +134,7 @@ export default function PortalPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const sb = createClient(SB_URL, SB_ANON);
+        const sb = getSupabase();
 
         const { data: { user: u } } = await sb.auth.getUser();
         if (!u) {
@@ -66,25 +149,62 @@ export default function PortalPage() {
           avatar: u.user_metadata?.avatar_url,
         });
 
-        // Fetch catalog count and client data in parallel
-        const [catalogRes, clientRes] = await Promise.all([
-          sb.from('catalog_items').select('id', { count: 'exact' }).eq('is_active', true),
-          sb.from('clients').select('*').eq('email', u.email).single(),
+        // FIX E — resolve the client row by user_id first (the canonical join,
+        // now maintained by the on_auth_user_created_link_client trigger), and
+        // fall back to email only for legacy rows that predate the backfill.
+        // The old code used .eq('email', …).single(); `.single()` ERRORS on zero
+        // rows and on duplicates, and this table contains duplicate/junk emails.
+        // `.maybeSingle()` returns null instead of throwing.
+        const [catalogRes, byUserId] = await Promise.all([
+          sb.from('catalog_items').select('id', { count: 'exact', head: true }).eq('is_active', true),
+          sb.from('clients').select('*').eq('user_id', u.id).limit(1).maybeSingle(),
         ]);
 
         setCatalogCount(catalogRes.count || 0);
 
-        if (clientRes.data) {
-          setClient(clientRes.data);
-          const { data: projectData } = await sb
-            .from('projects')
-            .select('*')
-            .eq('client_id', clientRes.data.id)
-            .order('created_at', { ascending: false });
-          setProjects(projectData || []);
+        let clientRow = byUserId.data;
+        if (byUserId.error) console.error('[portal] client lookup by user_id:', byUserId.error.message);
+
+        if (!clientRow && u.email) {
+          const byEmail = await sb
+            .from('clients').select('*').eq('email', u.email).limit(1).maybeSingle();
+          if (byEmail.error) console.error('[portal] client lookup by email:', byEmail.error.message);
+          clientRow = byEmail.data;
+        }
+
+        if (!clientRow) {
+          setLoading(false);
+          return; // renders the explicit "being reviewed" state, not a blank page
+        }
+
+        setClient(clientRow);
+
+        const { data: projectData, error: projErr } = await sb
+          .from('projects')
+          .select('*')
+          .eq('client_id', clientRow.id)
+          .order('created_at', { ascending: false });
+        if (projErr) console.error('[portal] projects:', projErr.message);
+
+        const rows = projectData || [];
+        setProjects(rows);
+
+        // FIX D (cont.) — pull deliverables and payments for the caller's
+        // projects. Neither was ever fetched, so the portal could not show a
+        // download link, a payment status, or a balance.
+        const ids = rows.map(r => r.id);
+        if (ids.length) {
+          const [delRes, payRes] = await Promise.all([
+            sb.from('deliverables').select('*').in('project_id', ids).order('version', { ascending: false }),
+            sb.from('payments').select('*').in('project_id', ids).order('created_at', { ascending: false }),
+          ]);
+          if (delRes.error) console.error('[portal] deliverables:', delRes.error.message);
+          if (payRes.error) console.error('[portal] payments:', payRes.error.message);
+          setDeliverables(delRes.data || []);
+          setPayments(payRes.data || []);
         }
       } catch (e) {
-        console.error('Portal error:', e);
+        console.error('[portal] init failed:', e);
         setAuthError(true);
       } finally {
         setLoading(false);
@@ -94,20 +214,35 @@ export default function PortalPage() {
   }, []);
 
   const handleSignOut = async () => {
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(SB_URL, SB_ANON);
-    await sb.auth.signOut();
-    window.location.href = '/login';
+    try {
+      const sb = getSupabase();
+      await sb.auth.signOut();
+    } catch (e) {
+      console.error('[portal] sign-out failed:', e);
+    } finally {
+      // Full reload is correct here: it clears all client caches after signOut.
+      window.location.assign('/');
+    }
   };
 
-  const getStatusIndex = (status: string) =>
-    STATUS_FLOW.findIndex(s => s.key === (status || 'lead'));
+  const getStatusIndex = (stage?: string) =>
+    STATUS_FLOW.findIndex(s => s.key === normaliseStage(stage));
 
-  const getStatusInfo = (status: string) =>
-    STATUS_FLOW.find(s => s.key === status) || STATUS_FLOW[0];
+  const getStatusInfo = (stage?: string) =>
+    STATUS_FLOW.find(s => s.key === normaliseStage(stage)) || STATUS_FLOW[0];
 
-  const activeProjects = projects.filter(p => !['completed', 'delivered'].includes(p.status || p.stage || '')).length;
-  const completedProjects = projects.filter(p => ['completed', 'delivered'].includes(p.status || p.stage || '')).length;
+  const deliverablesFor = (projectId: string) =>
+    deliverables.filter(d => d.project_id === projectId);
+
+  const paymentFor = (projectId: string) =>
+    payments.find(p => p.project_id === projectId) || null;
+
+  const money = (n?: number | null) =>
+    n == null ? null : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+  const isDone = (p: Project) => ['completed', 'delivered'].includes(normaliseStage(p.stage));
+  const activeProjects = projects.filter(p => !isDone(p)).length;
+  const completedProjects = projects.filter(p => isDone(p)).length;
 
   if (loading) {
     return (
@@ -121,22 +256,44 @@ export default function PortalPage() {
     );
   }
 
+  // FIX F (P1) — this screen used to be a dead end.
+  // It offered only "Sign In →", which sent the user to /login, where middleware
+  // saw them as already authenticated and redirected them straight back here.
+  // Testers had no way out of the loop without being told verbally to type the
+  // homepage URL. Every exit below is now explicit: home, catalog, contact, and
+  // a real sign-out that clears the session so /login is reachable again.
   if (authError || !user) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0a0906', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Montserrat, sans-serif' }}>
-        <div style={{ textAlign: 'center', maxWidth: 380 }}>
+      <div style={{ minHeight: '100vh', background: '#0a0906', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Montserrat, sans-serif', padding: '2rem' }}>
+        <div style={{ textAlign: 'center', maxWidth: 420 }}>
           <Link href="/" style={{ textDecoration: 'none' }}>
-            <img src="/logo.svg" alt="OGraphy" style={{ width: 140, height: 'auto', marginBottom: '2rem', display: 'block', margin: '0 auto 2rem' }} />
+            <img src="/logo.svg" alt="OGraphy — back to homepage" style={{ width: 140, height: 'auto', display: 'block', margin: '0 auto 2rem' }} />
           </Link>
           <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.4rem', color: '#f0e8d8', marginBottom: '.75rem', fontWeight: 300 }}>
-            Sign in to access your portal
+            We couldn&apos;t load your session
           </div>
           <div style={{ fontSize: '.75rem', color: 'rgba(232,213,183,.4)', lineHeight: 1.7, marginBottom: '2rem' }}>
-            Your project files, status updates, and brief submissions are here.
+            Your project files, status updates and brief submissions live here. Sign in
+            again to reach them — or head back to the site.
           </div>
-          <Link href="/login" style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.9rem 2.2rem', fontSize: '.68rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}>
-            Sign In →
-          </Link>
+
+          <div style={{ display: 'flex', gap: '.75rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '2rem' }}>
+            <button
+              onClick={handleSignOut}
+              style={{ background: '#c9a96e', color: '#0a0906', padding: '.9rem 2rem', fontSize: '.66rem', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 500, border: 'none', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+            >
+              Sign in again →
+            </button>
+            <Link href="/" style={{ display: 'inline-block', color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.9rem 2rem', fontSize: '.66rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
+              Back to site
+            </Link>
+          </div>
+
+          <div style={{ display: 'flex', gap: '1.25rem', justifyContent: 'center', fontSize: '.6rem', letterSpacing: '.08em' }}>
+            <Link href="/catalog" style={{ color: 'rgba(201,169,110,.45)', textDecoration: 'none' }}>Catalog</Link>
+            <Link href="/contact" style={{ color: 'rgba(201,169,110,.45)', textDecoration: 'none' }}>Start a project</Link>
+            <a href="mailto:ographyy@gmail.com" style={{ color: 'rgba(201,169,110,.45)', textDecoration: 'none' }}>Get help</a>
+          </div>
         </div>
       </div>
     );
@@ -267,18 +424,36 @@ export default function PortalPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {projects.map(project => {
-                  const effectiveStatus = project.status || project.stage || 'lead';
-                  const statusInfo = getStatusInfo(effectiveStatus);
-                  const statusIdx = getStatusIndex(effectiveStatus);
+                  const statusInfo = getStatusInfo(project.stage);
+                  const statusIdx = getStatusIndex(project.stage);
+                  const files = deliverablesFor(project.id);
+                  const payment = paymentFor(project.id);
+                  const balance = project.balance_due_usd;
                   return (
                     <div key={project.id} style={{ border: '1px solid rgba(201,169,110,.1)', background: '#0f0d0a', padding: '2rem', borderRadius: 6 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                         <div>
                           <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.2rem', color: '#f0e8d8', fontWeight: 300, marginBottom: '.3rem' }}>
-                            {project.service_name || project.name || project.service || 'OGraphy Project'}
+                            {project.service_name || 'OGraphy Project'}
                           </div>
-                          <div style={{ fontSize: '.58rem', color: 'rgba(232,213,183,.3)', letterSpacing: '.08em' }}>
-                            {new Date(project.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          {/* FIX G — project_ref, deadline and last-updated were
+                              never rendered. Without them the tracker gives the
+                              client nothing to quote back and no sense of motion. */}
+                          <div style={{ fontSize: '.58rem', color: 'rgba(232,213,183,.3)', letterSpacing: '.08em', display: 'flex', gap: '.9rem', flexWrap: 'wrap' }}>
+                            {project.project_ref && (
+                              <span style={{ fontFamily: 'IBM Plex Mono, monospace', color: 'rgba(201,169,110,.55)' }}>{project.project_ref}</span>
+                            )}
+                            <span>
+                              {new Date(project.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            </span>
+                            {project.deadline && (
+                              <span style={{ color: 'rgba(201,169,110,.5)' }}>
+                                Due {new Date(project.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                            {project.updated_at && (
+                              <span>Updated {new Date(project.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            )}
                           </div>
                         </div>
                         <div style={{
@@ -307,22 +482,66 @@ export default function PortalPage() {
                         </div>
                       </div>
 
+                      {/* FIX H — payment state was never surfaced. A client
+                          could not see what they had paid or what was owed. */}
+                      {(payment || project.total_amount_usd != null) && (
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '.62rem', borderTop: '1px solid rgba(201,169,110,.06)', paddingTop: '.85rem', marginBottom: '1rem' }}>
+                          {project.total_amount_usd != null && (
+                            <span style={{ color: 'rgba(232,213,183,.45)' }}>
+                              Total <strong style={{ color: '#e8d5b7', fontWeight: 500 }}>{money(project.total_amount_usd)}</strong>
+                            </span>
+                          )}
+                          {balance != null && balance > 0 && (
+                            <span style={{ color: 'rgba(224,180,112,.85)' }}>
+                              Balance due <strong style={{ fontWeight: 500 }}>{money(balance)}</strong>
+                            </span>
+                          )}
+                          {payment?.status && (
+                            <span style={{
+                              letterSpacing: '.1em', textTransform: 'uppercase', fontSize: '.55rem',
+                              color: payment.status === 'paid' ? '#4a9e6b' : 'rgba(232,213,183,.4)',
+                              border: `1px solid ${payment.status === 'paid' ? 'rgba(74,158,107,.3)' : 'rgba(201,169,110,.15)'}`,
+                              padding: '.25rem .6rem', borderRadius: 12,
+                            }}>
+                              {payment.status}
+                            </span>
+                          )}
+                          {payment?.receipt_url && (
+                            <a href={payment.receipt_url} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(201,169,110,.6)', fontSize: '.58rem', textDecoration: 'none', letterSpacing: '.08em' }}>
+                              Receipt ↗
+                            </a>
+                          )}
+                        </div>
+                      )}
+
                       {project.notes && (
                         <div style={{ fontSize: '.7rem', color: 'rgba(232,213,183,.35)', lineHeight: 1.7, marginBottom: '1rem', borderTop: '1px solid rgba(201,169,110,.06)', paddingTop: '.75rem' }}>
                           {project.notes.slice(0, 120)}{project.notes.length > 120 ? '…' : ''}
                         </div>
                       )}
 
-                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                        {project.deliverable_url && (
-                          <a
-                            href={project.deliverable_url}
-                            style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.65rem 1.5rem', fontSize: '.6rem', letterSpacing: '.12em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}
-                          >
-                            Download Files →
-                          </a>
-                        )}
-                        {['in_production', 'review'].includes(effectiveStatus) && (
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {/* FIX D (cont.) — read from the `deliverables` table.
+                            The old code read project.deliverable_url, a column
+                            that does not exist, so this button never appeared. */}
+                        {files.length > 0 ? (
+                          files.map(f => (
+                            <a
+                              key={f.id}
+                              href={f.file_url || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ display: 'inline-block', background: f.is_final ? '#c9a96e' : 'transparent', color: f.is_final ? '#0a0906' : '#c9a96e', border: f.is_final ? 'none' : '1px solid rgba(201,169,110,.3)', padding: '.65rem 1.5rem', fontSize: '.6rem', letterSpacing: '.12em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}
+                            >
+                              {f.file_name || 'Download'}{f.version && f.version > 1 ? ` v${f.version}` : ''} →
+                            </a>
+                          ))
+                        ) : normaliseStage(project.stage) === 'delivered' ? (
+                          <span style={{ fontSize: '.6rem', color: 'rgba(232,213,183,.3)', letterSpacing: '.08em' }}>
+                            Files are being prepared for release.
+                          </span>
+                        ) : null}
+                        {['in_production', 'review'].includes(normaliseStage(project.stage)) && (
                           <Link href="/portal/ai-studio" style={{ display: 'inline-block', color: '#c9a96e', border: '1px solid rgba(201,169,110,.25)', padding: '.65rem 1.2rem', fontSize: '.58rem', letterSpacing: '.1em', textTransform: 'uppercase', textDecoration: 'none' }}>
                             Ask AI Assistant
                           </Link>
@@ -350,11 +569,11 @@ export default function PortalPage() {
                   </div>
                 ) : (
                   projects.map(p => {
-                    const effectiveStatus = p.status || p.stage || 'lead';
+                    const effectiveStatus = normaliseStage(p.stage);
                     return (
                       <div key={p.id} style={{ borderBottom: '1px solid rgba(201,169,110,.06)', padding: '.9rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontSize: '.78rem', color: '#e8d5b7' }}>{p.service_name || p.name || p.service || 'Project'}</div>
+                          <div style={{ fontSize: '.78rem', color: '#e8d5b7' }}>{p.service_name || 'Project'}</div>
                           <div style={{ fontSize: '.6rem', color: 'rgba(232,213,183,.3)', marginTop: '.2rem' }}>
                             {new Date(p.created_at).toLocaleDateString()}
                           </div>

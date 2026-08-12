@@ -1,7 +1,11 @@
 'use client';
+
 import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
+
+// NOTE: force-dynamic lives in ./layout.tsx — route segment config is ignored
+// in 'use client' files. See the comment there.
 
 const ADMIN_EMAIL = 'endiosut.eo@gmail.com';
 
@@ -65,7 +69,31 @@ export default function LoginPage() {
       const sb = getSupabase();
       const { data, error: err } = await sb.auth.signInWithPassword({ email, password });
       if (err) throw err;
-      window.location.href = data.user?.email === ADMIN_EMAIL ? '/admin' : '/portal';
+
+      // FIX — do not navigate until the session cookie is actually readable.
+      // Previously this fired `window.location.href = …` the instant the promise
+      // resolved. The auth cookie write had not necessarily flushed, so the next
+      // request reached middleware with no session and was bounced back to
+      // /login — the user experienced "I signed in and nothing happened".
+      // Poll getSession() briefly; it resolves as soon as the cookie is set.
+      let ready = false;
+      for (let i = 0; i < 25 && !ready; i++) {
+        const { data: s } = await sb.auth.getSession();
+        if (s.session) { ready = true; break; }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (!ready) {
+        setError('Signed in, but the session did not persist. Check that cookies are enabled and try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Route by claim first, hardcoded email only as a fallback — mirrors the
+      // middleware check so the owner and a client follow the same code path.
+      const role = (data.user?.app_metadata as Record<string, unknown> | undefined)?.role;
+      const isAdmin = role === 'admin' || role === 'ops'
+        || (data.user?.email || '').toLowerCase() === ADMIN_EMAIL;
+      window.location.assign(isAdmin ? '/admin' : '/portal');
     } catch (e: any) {
       console.error('Admin login error:', e);
       setError('Invalid credentials.');
