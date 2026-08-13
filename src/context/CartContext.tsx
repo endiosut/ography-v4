@@ -39,8 +39,43 @@ type CartContextType = {
 const CartContext = createContext<CartContextType | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  // PERSISTENCE (added 13 Aug 2026)
+  // The cart previously lived only in React state, so it was destroyed by any
+  // reload or hard navigation — including the /login -> OAuth -> /auth/callback
+  // round-trip. A visitor could fill a cart, sign in, and arrive with nothing.
+  // localStorage keeps it across reloads and tabs; it is intentionally NOT
+  // server-side, because an anonymous cart has no owner to key on yet.
+  const CART_KEY = 'og_cart_v1';
+
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+
+  // Read once on mount. Never during render — that would break SSR hydration.
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(CART_KEY) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setCart(parsed);
+      }
+    } catch (e) {
+      console.error('[cart] restore failed:', e);
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  // Write on every change, but only after hydration, so the initial empty
+  // state never overwrites a stored cart.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    } catch (e) {
+      console.error('[cart] persist failed:', e);
+    }
+  }, [cart, hydrated]);
   const [autoCloseTimer, setAutoCloseTimer] = useState<NodeJS.Timeout | null>(null);
 
   // Auto-close cart after 5 seconds + close on scroll

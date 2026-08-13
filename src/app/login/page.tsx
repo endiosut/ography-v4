@@ -27,7 +27,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -66,28 +65,6 @@ export default function LoginPage() {
     } catch (e: any) {
       console.error('Google sign-in error:', e);
       setError('Google sign-in failed. Try again.');
-      setLoading(false);
-    }
-  };
-
-  const handleMagicLink = async () => {
-    if (!email) return;
-    if (!agreed) { setError('Please accept the Terms and Privacy Policy to continue.'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      await recordConsent(email);
-      const sb = getSupabase();
-      const { error: err } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-      });
-      if (err) throw err;
-      setSent(true);
-    } catch (e: any) {
-      console.error('Magic link error:', e);
-      setError(e.message || 'Something went wrong.');
-    } finally {
       setLoading(false);
     }
   };
@@ -155,7 +132,7 @@ export default function LoginPage() {
 
       <div style={{ width: '100%', maxWidth: 400 }}>
 
-        {!showAdmin && !sent && (
+        {!showAdmin && (
           <div style={{ background: '#0f0d0a', border: '1px solid rgba(201,169,110,.12)', padding: '2.5rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
               <div style={{ fontSize: '.52rem', letterSpacing: '.22em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', marginBottom: '.5rem' }}>
@@ -218,54 +195,19 @@ export default function LoginPage() {
               </span>
             </label>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', marginBottom: '1.25rem' }}>
-              <div style={{ flex: 1, height: 1, background: 'rgba(201,169,110,.1)' }} />
-              <span style={{ fontSize: '.5rem', color: 'rgba(240,232,216,.2)', letterSpacing: '.1em' }}>OR</span>
-              <div style={{ flex: 1, height: 1, background: 'rgba(201,169,110,.1)' }} />
-            </div>
-
-            <input
-              type="email"
-              placeholder="Enter your email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleMagicLink()}
-              style={{
-                width: '100%', padding: '.85rem 1.1rem',
-                background: 'rgba(25,22,15,.9)',
-                border: '1px solid rgba(201,169,110,.18)',
-                color: '#f0e8d8', fontFamily: 'Montserrat, sans-serif',
-                fontSize: '.82rem', outline: 'none', boxSizing: 'border-box',
-                marginBottom: '.75rem',
-              }}
-            />
-
+            {/* REMOVED 13 Aug 2026 — magic-link sign-in retired by decision.
+                Google OAuth is now the only consumer sign-in path. The email
+                input, the OR divider, the "Send Sign-In Link" button and the
+                "No password needed" caption all went with it.
+                handleMagicLink() and signInWithOtp are gone; `sent` state and
+                its confirmation screen are gone.
+                The error surface is kept — it is the only place consent
+                refusal and OAuth failure are shown to the user. */}
             {error && (
               <div style={{ fontSize: '.68rem', color: '#e07070', background: 'rgba(224,112,112,.06)', border: '1px solid rgba(224,112,112,.15)', padding: '.5rem .75rem', marginBottom: '.75rem' }}>
                 {error}
               </div>
             )}
-
-            <button
-              onClick={handleMagicLink}
-              disabled={loading || !email}
-              style={{
-                width: '100%', padding: '.9rem',
-                background: 'transparent',
-                border: '1px solid rgba(201,169,110,.3)',
-                color: '#c9a96e', fontFamily: 'Montserrat, sans-serif',
-                fontSize: '.68rem', letterSpacing: '.14em', textTransform: 'uppercase',
-                cursor: loading || !email ? 'not-allowed' : 'pointer',
-                opacity: loading || !email ? 0.5 : 1, transition: 'all .2s',
-                ...mobileTap,
-              }}
-            >
-              {loading ? '...' : 'Send Sign-In Link'}
-            </button>
-
-            <div style={{ marginTop: '1rem', fontSize: '.6rem', color: 'rgba(240,232,216,.2)', textAlign: 'center', lineHeight: 1.6 }}>
-              No password needed. A secure link is sent to your inbox.
-            </div>
 
             <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(201,169,110,.06)', textAlign: 'center' }}>
               <Link href="/contact" style={{ fontSize: '.6rem', color: 'rgba(201,169,110,.4)', textDecoration: 'none', letterSpacing: '.08em' }}>
@@ -275,24 +217,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {sent && !showAdmin && (
-          <div style={{ background: '#0f0d0a', border: '1px solid rgba(201,169,110,.12)', padding: '2.5rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '1.25rem' }}>✉️</div>
-            <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.4rem', color: '#f0e8d8', marginBottom: '.75rem', fontWeight: 300 }}>
-              Check your inbox
-            </div>
-            <div style={{ fontSize: '.75rem', color: 'rgba(240,232,216,.4)', lineHeight: 1.8 }}>
-              Sign-in link sent to <strong style={{ color: '#c9a96e' }}>{email}</strong>
-            </div>
-            <div style={{ fontSize: '.62rem', color: 'rgba(240,232,216,.2)', marginTop: '.75rem' }}>Expires in 1 hour</div>
-            <button
-              onClick={() => { setSent(false); setEmail(''); }}
-              style={{ marginTop: '1.5rem', background: 'none', border: 'none', color: 'rgba(201,169,110,.4)', fontSize: '.6rem', cursor: 'pointer', letterSpacing: '.08em', ...mobileTap }}
-            >
-              Use a different email
-            </button>
-          </div>
-        )}
+        {/* magic-link confirmation screen removed with the magic-link flow */}
 
         {showAdmin && (
           <div style={{ background: '#0f0d0a', border: '1px solid rgba(201,169,110,.12)', padding: '2.5rem' }}>

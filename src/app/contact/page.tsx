@@ -3,6 +3,8 @@ import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import { createBrowserClient } from '@supabase/ssr';
+import { useCart } from '@/context/CartContext';
 
 // ─────────────────────────────────────────────────────────────────
 //  OGraphy V4 — Contact Page (Final with validation)
@@ -101,6 +103,65 @@ function ContactPageInner() {
 
   // Multi-select: array of service IDs
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+
+  // ── LIVE CATALOG (13 Aug 2026) ────────────────────────────────────────────
+  // Step 3 previously rendered a hardcoded 11-item SERVICES array. The live
+  // catalog_items table holds 17 rows (16 active), so the form offered a
+  // different, smaller and drifting menu than /catalog and /admin/catalog.
+  // Anything the admin published was invisible here. Now it reads the same
+  // source of truth as everything else, and SERVICES is the fallback only.
+  type LiveService = { id: string; name: string; price: string; desc: string; stripe_link: string };
+  const [liveServices, setLiveServices] = useState<LiveService[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!url || !key) { console.error('[contact] Supabase env missing'); return; }
+        const sb = createBrowserClient(url, key);
+        const { data, error } = await sb
+          .from('catalog_items')
+          .select('id,name,base_price_usd,price_note,description,category,sort_order')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true, nullsFirst: false });
+        if (error) { console.error('[contact] catalog load:', error.message); return; }
+        setLiveServices(
+          (data || []).map(r => ({
+            id: r.id as string,
+            name: (r.name as string) ?? 'Service',
+            price: r.base_price_usd != null
+              ? `$${r.base_price_usd}${r.price_note ? ` ${r.price_note}` : ''}`
+              : (r.price_note as string) || "Let's talk",
+            desc: ((r.description as string) || (r.category as string) || '').slice(0, 60),
+            stripe_link: '',
+          }))
+        );
+      } catch (e) {
+        console.error('[contact] catalog load threw:', e);
+      }
+    })();
+  }, []);
+
+  // The menu rendered in step 3. Falls back to the static list only if the
+  // live fetch fails, so the form is never empty.
+  const SERVICE_OPTIONS: LiveService[] =
+    liveServices && liveServices.length ? liveServices : (SERVICES as LiveService[]);
+
+  // ── CART -> STEP 3 (13 Aug 2026) ──────────────────────────────────────────
+  // The cart and the form were two disconnected selections of the same
+  // catalog. A visitor could add three services to the cart, reach step 3, and
+  // find nothing selected — then re-pick by hand or submit a request that
+  // contradicted their own cart. Both now key on catalog_items.id.
+  const { cart } = useCart();
+
+  useEffect(() => {
+    if (!cart.length || !liveServices) return;
+    const cartIds = new Set(cart.map(c => String(c.id)));
+    const matched = liveServices.filter(s => cartIds.has(s.id)).map(s => s.id);
+    if (!matched.length) return;
+    setSelectedServices(prev => Array.from(new Set([...prev, ...matched])));
+  }, [cart, liveServices]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [phonePrefix, setPhonePrefix] = useState('+91');
@@ -187,7 +248,7 @@ function ContactPageInner() {
     setSelectedServices(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   };
 
-  const selectedItems = SERVICES.filter(s => selectedServices.includes(s.id));
+  const selectedItems = SERVICE_OPTIONS.filter(s => selectedServices.includes(s.id));
   const selectedNames = selectedItems.map(s => s.name).join(', ');
   const payableItems = selectedItems.filter(s => s.stripe_link);
 
@@ -390,7 +451,7 @@ function ContactPageInner() {
               Select one or more. Click to toggle. Combine services — we'll handle them together.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '.5rem', marginBottom: '1.5rem' }}>
-              {SERVICES.map(svc => {
+              {SERVICE_OPTIONS.map(svc => {
                 const sel = selectedServices.includes(svc.id);
                 return (
                   <div key={svc.id} onClick={() => toggleService(svc.id)} style={{ border: `1px solid ${sel ? '#c9a96e' : 'rgba(201,169,110,.15)'}`, padding: '.9rem .8rem', cursor: 'pointer', textAlign: 'center', background: sel ? 'rgba(201,169,110,.08)' : 'transparent', transition: 'all .2s', position: 'relative', borderRadius: 4 }}>
