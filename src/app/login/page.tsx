@@ -16,6 +16,13 @@ function getSupabase() {
   return createBrowserClient(url, key);
 }
 
+// RESTORED 13 Aug 2026 — recovered from the 2 Aug production build.
+// The consent checkbox existed in production and was lost when the 12 Aug git
+// recovery deployed a build predating it. `consent_records` holds 34 rows, so
+// consent WAS being captured; between 12 and 13 Aug it silently was not.
+// Markup below is byte-faithful to the recovered HTML.
+const POLICY_VERSION = '2026-08';
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,11 +30,33 @@ export default function LoginPage() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+
+  // Record consent before the auth round-trip, keyed on email where we have it.
+  // Fire-and-forget: a logging failure must never block a sign-in.
+  const recordConsent = async (subjectEmail: string | null) => {
+    try {
+      const sb = getSupabase();
+      await sb.from('consent_records').insert(
+        (['terms', 'privacy'] as const).map(t => ({
+          subject_email: subjectEmail,
+          consent_type: t,
+          policy_version: POLICY_VERSION,
+          granted: true,
+          source: 'login',
+        }))
+      );
+    } catch (e) {
+      console.error('[login] consent record failed (non-blocking):', e);
+    }
+  };
 
   const handleGoogle = async () => {
+    if (!agreed) { setError('Please accept the Terms and Privacy Policy to continue.'); return; }
     setLoading(true);
     setError('');
     try {
+      await recordConsent(null);
       const sb = getSupabase();
       const { error: err } = await sb.auth.signInWithOAuth({
         provider: 'google',
@@ -43,9 +72,11 @@ export default function LoginPage() {
 
   const handleMagicLink = async () => {
     if (!email) return;
+    if (!agreed) { setError('Please accept the Terms and Privacy Policy to continue.'); return; }
     setLoading(true);
     setError('');
     try {
+      await recordConsent(email);
       const sb = getSupabase();
       const { error: err } = await sb.auth.signInWithOtp({
         email,
@@ -168,6 +199,24 @@ export default function LoginPage() {
               </svg>
               Continue with Google
             </button>
+
+            {/* RESTORED from the 2 Aug build — markup preserved verbatim. */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: '.5rem',
+              marginBottom: '1.1rem', fontSize: '.58rem', lineHeight: 1.5,
+              color: 'rgba(240,232,216,.38)',
+            }}>
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={e => { setAgreed(e.target.checked); if (e.target.checked) setError(''); }}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                I agree to the <a style={{ color: '#c9a96e' }} href="/terms">Terms</a>
+                {' '}and <a style={{ color: '#c9a96e' }} href="/privacy">Privacy Policy</a>.
+              </span>
+            </label>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', marginBottom: '1.25rem' }}>
               <div style={{ flex: 1, height: 1, background: 'rgba(201,169,110,.1)' }} />
