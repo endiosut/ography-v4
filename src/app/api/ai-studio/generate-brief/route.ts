@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
+import { AI_STUDIO_ENABLED } from '@/lib/features';
+
+// Fail closed. The UI no longer links here, but an endpoint that still answers
+// is an endpoint that still costs money and still leaks capability.
+function aiStudioDisabled() {
+  return Response.json(
+    { error: 'AI Studio is not available.' },
+    { status: 404 }
+  );
+}
+
+
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
+  if (!AI_STUDIO_ENABLED) return aiStudioDisabled();
   try {
     const { prompt } = await req.json();
     if (!prompt?.trim()) return NextResponse.json({ error: 'Prompt required' }, { status: 400 });

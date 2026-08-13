@@ -4,6 +4,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CartIcon } from '@/context/CartContext';
+import { AI_STUDIO_ENABLED } from '@/lib/features';
 
 const ADMIN_EMAIL = 'endiosut.eo@gmail.com';
 
@@ -128,7 +129,9 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
 
       <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
         <Link href="/catalog" style={linkStyle('/catalog')}>Services</Link>
-        <Link href="/ai-studio" style={linkStyle('/ai-studio')}>AI Studio</Link>
+        {AI_STUDIO_ENABLED && (
+          <Link href="/ai-studio" style={linkStyle('/ai-studio')}>AI Studio</Link>
+        )}
         <Link href="/contact" style={linkStyle('/contact')}>Contact</Link>
 
         {!user ? (
@@ -184,7 +187,11 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
                 </div>
                 {(isAdmin
                   ? [{ label: 'Admin Dashboard', href: '/admin' }, { label: 'Analytics', href: '/admin/analytics' }]
-                  : [{ label: 'My Portal', href: '/portal' }, { label: 'Projects', href: '/portal/ai-studio' }]
+                  : [
+                      { label: 'My Portal', href: '/portal' },
+                      // "Projects" pointed at /portal/ai-studio — hidden with the flag.
+                      ...(AI_STUDIO_ENABLED ? [{ label: 'Projects', href: '/portal/ai-studio' }] : []),
+                    ]
                 ).map(item => (
                   <Link key={item.label} href={item.href}
                     onClick={() => setProfileOpen(false)}

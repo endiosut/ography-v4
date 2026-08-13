@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
 import NavBar from '@/components/NavBar';
+import { AI_STUDIO_ENABLED } from '@/lib/features';
 
 // NOTE: force-dynamic lives in ./layout.tsx — route segment config is ignored
 // in 'use client' files. See the comment there.
@@ -340,7 +341,8 @@ export default function PortalPage() {
         </div>
 
         {/* AI Studio CTA banner */}
-        <Link href="/portal/ai-studio" style={{ textDecoration: 'none', display: 'block', marginBottom: '2.5rem' }}>
+        {AI_STUDIO_ENABLED && (
+          <Link href="/portal/ai-studio" style={{ textDecoration: 'none', display: 'block', marginBottom: '2.5rem' }}>
           <div style={{
             border: '1px solid rgba(201,169,110,.2)', background: 'linear-gradient(135deg, rgba(201,169,110,.04) 0%, rgba(201,169,110,.01) 100%)',
             padding: '1.25rem 1.75rem', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -363,6 +365,7 @@ export default function PortalPage() {
             <div style={{ fontSize: '.65rem', color: 'rgba(201,169,110,.5)', letterSpacing: '.1em' }}>Open →</div>
           </div>
         </Link>
+        )}
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(201,169,110,.08)', marginBottom: '2.5rem' }}>
@@ -416,9 +419,11 @@ export default function PortalPage() {
                   <Link href="/contact" style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}>
                     Start a Project →
                   </Link>
-                  <Link href="/portal/ai-studio" style={{ display: 'inline-block', background: 'transparent', color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
-                    Open Projects
-                  </Link>
+                  {AI_STUDIO_ENABLED && (
+                    <Link href="/portal/ai-studio" style={{ display: 'inline-block', background: 'transparent', color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
+                      Open Projects
+                    </Link>
+                  )}
                 </div>
               </div>
             ) : (
@@ -541,7 +546,7 @@ export default function PortalPage() {
                             Files are being prepared for release.
                           </span>
                         ) : null}
-                        {['in_production', 'review'].includes(normaliseStage(project.stage)) && (
+                        {AI_STUDIO_ENABLED && ['in_production', 'review'].includes(normaliseStage(project.stage)) && (
                           <Link href="/portal/ai-studio" style={{ display: 'inline-block', color: '#c9a96e', border: '1px solid rgba(201,169,110,.25)', padding: '.65rem 1.2rem', fontSize: '.58rem', letterSpacing: '.1em', textTransform: 'uppercase', textDecoration: 'none' }}>
                             Ask AI Assistant
                           </Link>
