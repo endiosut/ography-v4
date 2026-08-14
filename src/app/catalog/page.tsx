@@ -2,50 +2,62 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import NavBar from '@/components/NavBar';
+import { useCart } from '@/context/CartContext';
 
 // ─────────────────────────────────────────────────────────────────
-//  OGraphy V4 — Catalog Page (Complete Rebuild)
+//  OGraphy V4 — Catalog Page
 //  File: src/app/catalog/page.tsx
-//
-//  Fixes from audit:
-//  ✅ Prices visible on cards
-//  ✅ Description placeholder shown even when empty
-//  ✅ Category filters working (match Supabase category field exactly)
-//  ✅ Stripe "Pay now" link on items that have it
-//  ✅ Cart icon with counter badge
-//  ✅ Cart logic: no-stripe = "Request", stripe = "Pay Upfront" + "50/50"
-//  ✅ Admin-style card finish (rounded corners, smooth styling)
-//  ✅ Float on hover + scroll entrance animation
-//  ✅ User profile with signout when logged in
-//  ✅ Settings → account/purchases
-//  ✅ Auto-captures navigation history for contact form pre-fill
 // ─────────────────────────────────────────────────────────────────
 
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://unzwefrtgsgmtljlbavf.supabase.co';
+const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuendlZnJ0Z3NnbXRsamxiYXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1MjMsImV4cCI6MjA5MjA4OTUyM30.QPoyf_UYDD82xW1KYaSbukPrfMoTAACVMKPT05HKI90';
 
 type CatalogItem = {
   id: string;
   name: string;
   category: string;
-  description: string;
-  price: string | number;
+  subcategory?: string | null;
+  description: string | null;
+  base_price_usd?: number | null;
+  price_note?: string | null;
+  price?: string | number;
   price_display?: string;
+  turnaround?: string | null;
   turnaround_time?: string;
-  turnaround?: string;
   stripe_link?: string;
-  deposit_50?: number;
-  image_url?: string;
+  image_url?: string | null;
+  is_active?: boolean;
+  is_featured?: boolean;
+  sort_order?: number;
 };
-type CartItem = CatalogItem & { qty: number };
+
+// Fallback items in case Supabase connection is unreachable
+const FALLBACK_ITEMS: CatalogItem[] = [
+  { id: '1', name: 'Echo Launch Kit', category: 'identity', description: 'Logo mark + 3 variants + mini brand system + color palette + typography selection. Everything you need to launch with a cohesive visual identity.', base_price_usd: 180, price_note: 'From $180 — one-time project', turnaround: '5-7 days', is_featured: true, is_active: true, sort_order: 1 },
+  { id: '2', name: 'Brand Amplification', category: 'identity', description: 'Full logo system + brand voice blueprint + Charte Graphique + cross-platform asset library. The complete identity architecture.', base_price_usd: 555, price_note: 'From $555 — full system', turnaround: '2 weeks', is_featured: true, is_active: true, sort_order: 2 },
+  { id: '3', name: 'Fractional Creative Partner', category: 'identity', description: 'Ongoing identity evolution + monthly asset production + strategic visual direction. Your creative department without the overhead.', base_price_usd: 1200, price_note: '$1,200/mo — ongoing partnership', turnaround: 'Monthly', is_featured: false, is_active: true, sort_order: 3 },
+  { id: '4', name: 'Social Media Starter Pack', category: 'content', description: '10 Instagram posts + 5 stories, fully branded, Canva-ready and editable. Launch your social presence in one delivery.', base_price_usd: 95, price_note: '$95 per set of 15 templates', turnaround: '3-5 days', is_featured: false, is_active: true, sort_order: 4 },
+  { id: '5', name: 'UGC Asset Kit', category: 'content', description: '15 branded templates — posts, stories, reel covers, thumbnails. Designed for content creators who need volume with consistency.', base_price_usd: 145, price_note: '$145 — 15 templates', turnaround: '5 days', is_featured: true, is_active: true, sort_order: 5 },
+  { id: '6', name: 'Monthly Content Bundle', category: 'content', description: '30 templates per month, refreshed every 30 days. Never run out of on-brand content. Cancel anytime.', base_price_usd: 280, price_note: '$280/mo — 30 templates', turnaround: 'Monthly', is_featured: false, is_active: true, sort_order: 6 },
+  { id: '7', name: 'Photo Retouch Pack', category: 'content', description: '50 batch retouched images with color grading and polish.', base_price_usd: 75, price_note: '$75 per 50 images', turnaround: '3-4 days', is_featured: false, is_active: true, sort_order: 7 },
+  { id: '8', name: 'Custom Lightroom Preset Pack', category: 'content', description: '5 tailored Lightroom presets designed to give your photography consistent aesthetic tone.', base_price_usd: 45, price_note: '$45 — 5 presets', turnaround: '2-3 days', is_featured: false, is_active: true, sort_order: 8 },
+  { id: '9', name: 'Event Pull-Up Banner', category: 'print', description: '85×200cm pull-up banner — design + print + delivery. Show up to your event with presence. One submission, one payment, banner arrives.', base_price_usd: 85, price_note: 'From $85 — design + print + delivery', turnaround: '5-7 days', is_featured: true, is_active: true, sort_order: 9 },
+  { id: '10', name: 'Business Card Set', category: 'print', description: 'Custom designed business cards — 250 cards printed on premium stock + delivered. First impression, handled.', base_price_usd: 65, price_note: '$65 — design + 250 cards + delivery', turnaround: '5 days', is_featured: false, is_active: true, sort_order: 10 },
+  { id: '11', name: 'Framed Wall Print', category: 'print', description: 'Museum-grade framed art prints for office and studio spaces.', base_price_usd: 120, price_note: 'From $120 — depends on size', turnaround: '5-7 days', is_featured: false, is_active: true, sort_order: 11 },
+  { id: '12', name: 'Event Identity Kit', category: 'print', description: 'Complete physical collateral kit for corporate events, badges, signage, and folders.', base_price_usd: 320, price_note: 'From $320 — full event kit', turnaround: '7-10 days', is_featured: false, is_active: true, sort_order: 12 },
+  { id: '13', name: 'Pitch Deck Design', category: 'digital', description: '20 high-converting slides formatted for investor presentations and sales decks.', base_price_usd: 220, price_note: 'From $220 — 20 slides', turnaround: '5-7 days', is_featured: false, is_active: true, sort_order: 13 },
+  { id: '14', name: 'Business Proposal', category: 'digital', description: '15-page branded document template for client pitches and RFPs.', base_price_usd: 180, price_note: 'From $180 — 15 pages', turnaround: '4-6 days', is_featured: false, is_active: true, sort_order: 14 },
+  { id: '15', name: 'Student CV & Portfolio', category: 'digital', description: 'Modern, ATS-friendly CV design and digital portfolio showcase.', base_price_usd: 75, price_note: '$75 — CV + cover letter', turnaround: '3 days', is_featured: false, is_active: true, sort_order: 15 },
+  { id: '16', name: 'Same-Day Event Edits', category: 'event', description: 'Express delivery of highlight photos within hours of event wrap.', base_price_usd: 350, price_note: 'From $350 — same-day delivery', turnaround: 'Same Day', is_featured: false, is_active: true, sort_order: 16 },
+];
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'All': [],
-  'Identity Systems': ['identity', 'brand', 'Identity', 'Brand'],
-  'Content Production': ['content', 'ugc', 'photography', 'Content'],
-  'Print & Physical': ['print', 'physical', 'Print'],
-  'Editorial': ['digital', 'editorial', 'document', 'Digital'],
-  'Event Media': ['event', 'events', 'same-day', 'Event'],
+  'Identity Systems': ['identity', 'brand'],
+  'Content Production': ['content', 'ugc', 'photography'],
+  'Print & Physical': ['print', 'physical'],
+  'Editorial': ['digital', 'editorial', 'document'],
+  'Event Media': ['event', 'events', 'same-day'],
 };
 
 const applyFilter = (items: CatalogItem[], cat: string) => {
@@ -56,43 +68,92 @@ const applyFilter = (items: CatalogItem[], cat: string) => {
 
 const DISPLAY_CATEGORIES = Object.keys(CATEGORY_MAP);
 
+const formatPrice = (priceNote?: string | null, basePrice?: number | string | null): string => {
+  if (priceNote && priceNote.trim()) return priceNote.trim();
+  if (basePrice !== undefined && basePrice !== null && basePrice !== '') {
+    const num = typeof basePrice === 'number' ? basePrice : parseFloat(String(basePrice).replace(/[^0-9.]/g, ''));
+    if (!isNaN(num) && num > 0) return `$${num.toLocaleString()}`;
+  }
+  return 'Contact for pricing';
+};
+
 export default function CatalogPage() {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [filtered, setFiltered] = useState<CatalogItem[]>([]);
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [addedId, setAddedId] = useState<string | null>(null);
 
+  const { addToCart } = useCart();
+
   // Track navigation history for contact form
   useEffect(() => {
-    const history = JSON.parse(sessionStorage.getItem('og_nav_history') || '[]');
-    history.push({ page: 'catalog', time: Date.now() });
-    sessionStorage.setItem('og_nav_history', JSON.stringify(history.slice(-10)));
+    try {
+      const history = JSON.parse(sessionStorage.getItem('og_nav_history') || '[]');
+      history.push({ page: 'catalog', time: Date.now() });
+      sessionStorage.setItem('og_nav_history', JSON.stringify(history.slice(-10)));
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
     const fetchItems = async () => {
       try {
         const res = await fetch(
-          `${SB_URL}/rest/v1/catalog_items?select=id,name,category,description,price,price_display,turnaround_time,stripe_link,image_url&order=category,name`,
+          `${SB_URL}/rest/v1/catalog_items?select=*&order=sort_order`,
           {
-            headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+            headers: {
+              apikey: SB_ANON,
+              Authorization: `Bearer ${SB_ANON}`,
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            },
             cache: 'no-store',
           }
         );
+
         if (!res.ok) {
           console.error('Catalog fetch failed:', res.status, await res.text());
+          setItems(FALLBACK_ITEMS);
+          setFiltered(FALLBACK_ITEMS);
           return;
         }
-        const data = await res.json();
-        const clean = (Array.isArray(data) ? data : [])
-          .filter((i: CatalogItem) => i.name && i.name !== 'ffdfd' && i.name !== 'dfdf');
+
+        const rawData = await res.json();
+        if (!Array.isArray(rawData) || rawData.length === 0) {
+          setItems(FALLBACK_ITEMS);
+          setFiltered(FALLBACK_ITEMS);
+          return;
+        }
+
+        const clean: CatalogItem[] = rawData
+          .filter((i: any) => i && i.name && i.name !== 'ffdfd' && i.name !== 'dfdf' && i.is_active !== false)
+          .map((i: any) => ({
+            id: i.id,
+            name: i.name,
+            category: i.category,
+            subcategory: i.subcategory,
+            description: i.description,
+            base_price_usd: i.base_price_usd,
+            price_note: i.price_note,
+            price: i.base_price_usd ?? 0,
+            price_display: formatPrice(i.price_note, i.base_price_usd),
+            turnaround: i.turnaround || i.turnaround_time || '',
+            turnaround_time: i.turnaround || i.turnaround_time || '',
+            stripe_link: i.stripe_link || undefined,
+            image_url: i.image_url,
+            is_active: i.is_active,
+            is_featured: i.is_featured,
+            sort_order: i.sort_order,
+          }));
+
         setItems(clean);
         setFiltered(clean);
       } catch (e) {
         console.error('Catalog fetch error:', e);
+        setItems(FALLBACK_ITEMS);
+        setFiltered(FALLBACK_ITEMS);
       } finally {
         setLoading(false);
       }
@@ -129,155 +190,29 @@ export default function CatalogPage() {
     return () => clearTimeout(timer);
   }, [filtered]);
 
-  const addToCart = (item: CatalogItem) => {
-    setCart(prev => {
-      const exists = prev.find(c => c.id === item.id);
-      const resolved = { ...item, turnaround: item.turnaround_time || item.turnaround || '' };
-      return exists
-        ? prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
-        : [...prev, { ...resolved, qty: 1 }];
+  const handleAddToCart = (item: CatalogItem) => {
+    addToCart({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      description: item.description || '',
+      price: item.price_display || (item.base_price_usd ? `$${item.base_price_usd}` : 'Contact for pricing'),
+      turnaround: item.turnaround || item.turnaround_time || '',
+      stripe_link: item.stripe_link,
     });
     setAddedId(item.id);
     setTimeout(() => setAddedId(null), 1800);
-    setCartOpen(true);
-    // Cart auto-hide: close after 5 seconds or on scroll
-    const timer = setTimeout(() => setCartOpen(false), 5000);
-    const onScroll = () => {
-      clearTimeout(timer);
-      setCartOpen(false);
-      window.removeEventListener('scroll', onScroll);
-    };
-    window.addEventListener('scroll', onScroll, { once: true });
   };
-
-  const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce((s, i) => {
-    const p = parseFloat(String(i.price).replace(/[^0-9.]/g, '')) || 0;
-    return s + p * i.qty;
-  }, 0);
-  const hasStripe = cart.some(i => i.stripe_link);
-  const allHaveStripe = cart.length > 0 && cart.every(i => i.stripe_link);
-
-  const handleRequestAll = () => {
-    const services = cart.map(i => i.name).join(',');
-    const history = sessionStorage.getItem('og_nav_history') || '[]';
-    sessionStorage.setItem('og_contact_services', services);
-    sessionStorage.setItem('og_contact_history', history);
-    window.location.href = `/contact?services=${encodeURIComponent(services)}`;
-  };
-
-  const formatPrice = (price: string | number | null | undefined): string => {
-    if (price === null || price === undefined || price === '') return 'Contact for pricing';
-    if (typeof price === 'number') return price > 0 ? `$${price.toLocaleString()}` : 'Contact for pricing';
-    const s = String(price).trim();
-    if (!s) return 'Contact for pricing';
-    if (s.startsWith('$') || s.toLowerCase().startsWith('from')) return s;
-    if (/^\d+(\.\d+)?$/.test(s)) return `$${parseFloat(s).toLocaleString()}`;
-    const n = parseFloat(s.replace(/[^0-9.]/g, ''));
-    if (!isNaN(n) && n > 0) return `$${n.toLocaleString()}`;
-    return s || 'Contact for pricing';
-  };
-
-
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0906', fontFamily: 'Montserrat, sans-serif', color: '#e8d5b7' }}>
-
       <NavBar />
-
-      {/* ── CART SIDEBAR ── */}
-      {cartOpen && (
-        <>
-          <div onClick={() => setCartOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 149, background: 'rgba(0,0,0,.5)' }} />
-          <div style={{
-            position: 'fixed', top: 0, right: 0, bottom: 0, width: 360, zIndex: 150,
-            background: '#0a0906', borderLeft: '1px solid rgba(201,169,110,.15)',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(201,169,110,.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9a96e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/>
-                  <path d="M16 10a4 4 0 01-8 0"/>
-                </svg>
-                <span style={{ fontSize: '.6rem', letterSpacing: '.18em', textTransform: 'uppercase', color: 'rgba(240,232,216,.45)' }}>
-                  Cart {cartCount > 0 ? `· ${cartCount}` : ''}
-                </span>
-              </div>
-              <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(240,232,216,.3)', cursor: 'pointer', fontSize: '1.4rem', lineHeight: 1 }}>×</button>
-            </div>
-
-            <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem' }}>
-              {cart.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'rgba(240,232,216,.25)', fontSize: '.75rem', lineHeight: 1.8 }}>
-                  Your cart is empty<br />
-                  <span style={{ fontSize: '.62rem', color: 'rgba(240,232,216,.15)' }}>Add services to request or purchase</span>
-                </div>
-              ) : cart.map(item => (
-                <div key={item.id} style={{ borderBottom: '1px solid rgba(201,169,110,.07)', padding: '.9rem 0', display: 'flex', gap: '.75rem', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '.76rem', color: '#e8d5b7', marginBottom: '.25rem', lineHeight: 1.3 }}>{item.name}</div>
-                    <div style={{ fontSize: '.78rem', color: '#c9a96e', fontFamily: 'Cormorant Garamond, serif', marginBottom: '.2rem' }}>{formatPrice((item as any).price_display || item.price)}</div>
-                    {item.turnaround && <div style={{ fontSize: '.58rem', color: 'rgba(240,232,216,.25)' }}>{item.turnaround}</div>}
-                    {item.stripe_link && (
-                      <Link href={item.stripe_link} target="_blank" style={{ fontSize: '.55rem', color: 'rgba(201,169,110,.4)', textDecoration: 'none', display: 'block', marginTop: '.35rem' }}>
-                        Pay directly →
-                      </Link>
-                    )}
-                  </div>
-                  <button onClick={() => removeFromCart(item.id)} style={{ background: 'none', border: 'none', color: 'rgba(240,232,216,.2)', cursor: 'pointer', fontSize: '1rem', padding: '.2rem', flexShrink: 0 }}>✕</button>
-                </div>
-              ))}
-            </div>
-
-            {cart.length > 0 && (
-              <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid rgba(201,169,110,.08)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                  <span style={{ fontSize: '.65rem', color: 'rgba(240,232,216,.35)', letterSpacing: '.06em' }}>Estimated</span>
-                  <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', color: '#c9a96e' }}>
-                    ${cartTotal.toLocaleString()}
-                  </span>
-                </div>
-
-                {/* Smart cart button logic */}
-                {allHaveStripe ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-                    <Link href={`/contact?services=${encodeURIComponent(cart.map(i => i.name).join(','))}&pay=upfront`}
-                      style={{ display: 'block', textAlign: 'center', background: '#c9a96e', color: '#0a0906', padding: '.85rem', fontSize: '.62rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500 }}>
-                      Pay Upfront — Full Amount
-                    </Link>
-                    <button onClick={handleRequestAll}
-                      style={{ background: 'transparent', border: '1px solid rgba(201,169,110,.25)', color: '#c9a96e', padding: '.85rem', fontSize: '.62rem', letterSpacing: '.14em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' }}>
-                      Pay 50% Now → 50% at Delivery
-                    </button>
-                  </div>
-                ) : hasStripe ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-                    <button onClick={handleRequestAll}
-                      style={{ background: '#c9a96e', color: '#0a0906', border: 'none', padding: '.85rem', fontSize: '.62rem', letterSpacing: '.14em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', fontWeight: 500 }}>
-                      Request Services →
-                    </button>
-                    <div style={{ fontSize: '.55rem', color: 'rgba(240,232,216,.2)', textAlign: 'center', lineHeight: 1.6 }}>Payment links sent separately for applicable services</div>
-                  </div>
-                ) : (
-                  <button onClick={handleRequestAll}
-                    style={{ width: '100%', background: '#c9a96e', color: '#0a0906', border: 'none', padding: '.85rem', fontSize: '.62rem', letterSpacing: '.14em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', fontWeight: 500 }}>
-                    Request These Services →
-                  </button>
-                )}
-                <div style={{ marginTop: '.75rem', fontSize: '.52rem', color: 'rgba(240,232,216,.18)', textAlign: 'center', letterSpacing: '.06em' }}>
-                  50% on submission · 50% at delivery · USD
-                </div>
-              </div>
-            )}
-          </div>
-        </>
-      )}
 
       {/* ── HERO ── */}
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '8.5rem 3rem 2.5rem' }}>
-        <div style={{ fontSize: '.5rem', letterSpacing: '.3em', textTransform: 'uppercase', color: 'rgba(201,169,110,.5)', marginBottom: '1rem' }}>Visual Readiness as a Service</div>
+        <div style={{ fontSize: '.5rem', letterSpacing: '.3em', textTransform: 'uppercase', color: 'rgba(201,169,110,.5)', marginBottom: '1rem' }}>
+          Visual Readiness as a Service
+        </div>
         <h1 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 'clamp(1.8rem,4vw,2.8rem)', fontWeight: 300, color: '#f0e8d8', marginBottom: '.75rem' }}>
           Submit. We execute. You receive.
         </h1>
@@ -307,7 +242,7 @@ export default function CatalogPage() {
           ))}
         </div>
         <div style={{ marginTop: '.75rem', fontSize: '.58rem', color: 'rgba(232,213,183,.18)', letterSpacing: '.06em' }}>
-          {loading ? 'Loading...' : `${filtered.length} service${filtered.length !== 1 ? 's' : ''}`}
+          {loading ? 'Loading services...' : `${filtered.length} service${filtered.length !== 1 ? 's' : ''}`}
         </div>
       </div>
 
@@ -385,7 +320,7 @@ export default function CatalogPage() {
 
                 {/* Price — always visible */}
                 <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.55rem', color: '#c9a96e', marginBottom: '.2rem', lineHeight: 1 }}>
-                  {formatPrice(item.price_display || item.price)}
+                  {item.price_display || formatPrice(item.price_note, item.base_price_usd)}
                 </div>
 
                 {/* Turnaround */}
@@ -399,7 +334,7 @@ export default function CatalogPage() {
                 {/* Action buttons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '.45rem', marginTop: 'auto' }}>
                   <button
-                    onClick={() => addToCart(item)}
+                    onClick={() => handleAddToCart(item)}
                     style={{
                       padding: '.6rem', background: addedId === item.id ? 'rgba(201,169,110,.12)' : 'transparent',
                       border: `1px solid ${addedId === item.id ? '#c9a96e' : 'rgba(201,169,110,.28)'}`,
