@@ -36,9 +36,49 @@ export type OnboardResult = {
 export async function handleLead(input: LeadInput): Promise<OnboardResult> {
   const sb = getServiceSupabase();
 
-  // Upsert client — idempotent, email is the key
-  let { data: client } = await sb.from('clients').select('id').eq('email', input.email).single();
+  // ── CLIENT RESOLUTION (rewritten 16 Aug 2026) ────────────────────────────
+  //
+  // The previous implementation was:
+  //   let { data: client } = await sb.from('clients')
+  //       .select('id').eq('email', input.email).single();
+  //
+  // Three defects, in increasing severity:
+  //
+  //  1. `.single()` ERRORS on zero rows and on multiple rows. The error was
+  //     DISCARDED — only `data` was destructured. A duplicate-email row made
+  //     `client` null, the code then INSERTed, and hit clients_email_key.
+  //     The whole submission 500'd and the lead was lost with no record.
+  //
+  //  2. `.eq('email', …)` is case-SENSITIVE. route.ts lowercases the submitted
+  //     address, but rows written by other paths (portal, signup, seed) are not
+  //     guaranteed lowercase. A mixed-case row would miss the lookup and then
+  //     violate the unique constraint on insert. Currently 0 mixed-case rows,
+  //     so this has not bitten yet — it is a live landmine, not a live fire.
+  //
+  //  3. Failures were invisible. `clients.source` is 'contact_form' or the
+  //     referrer for anything this function creates. Measured 16 Aug:
+  //     ZERO rows in the whole table carry a contact-form source. Whatever the
+  //     cause per submission, this branch has never once produced a client.
+  //
+  // Now: case-insensitive lookup, maybeSingle (null instead of throwing),
+  // errors surfaced, and a unique-violation fallback that re-reads rather than
+  // losing the lead.
   let isNewClient = false;
+
+  const { data: existing, error: lookupErr } = await sb
+    .from('clients')
+    .select('id')
+    .ilike('email', input.email)
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupErr) {
+    console.error('[onboarding] client lookup failed:', lookupErr.message, {
+      email: input.email,
+    });
+  }
+
+  let client: { id: string } | null = existing ?? null;
 
   if (!client) {
     isNewClient = true;
@@ -54,11 +94,32 @@ export async function handleLead(input: LeadInput): Promise<OnboardResult> {
         notes: input.notes || null,
       })
       .select('id')
-      .single();
+      .maybeSingle();
 
-    if (error || !newClient) throw new Error('Client creation failed: ' + error?.message);
-    client = newClient;
+    if (error) {
+      // 23505 = unique_violation. The row exists under a casing or a race the
+      // lookup missed. Re-read it rather than dropping a real lead.
+      if (error.code === '23505') {
+        console.warn('[onboarding] insert hit clients_email_key, re-reading:', input.email);
+        const { data: raced } = await sb
+          .from('clients').select('id').ilike('email', input.email).limit(1).maybeSingle();
+        if (!raced) {
+          throw new Error('Client exists but could not be read back: ' + input.email);
+        }
+        client = raced;
+        isNewClient = false;
+      } else {
+        console.error('[onboarding] client creation failed:', error.message, error.code);
+        throw new Error('Client creation failed: ' + error.message);
+      }
+    } else if (!newClient) {
+      throw new Error('Client creation returned no row for ' + input.email);
+    } else {
+      client = newClient;
+    }
   }
+
+  if (!client) throw new Error('Could not resolve a client for ' + input.email);
 
   const isPaid = !!input.stripeSessionId;
 
