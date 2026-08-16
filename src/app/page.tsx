@@ -37,9 +37,13 @@ const formatPrice = (priceNote?: string | null, basePrice?: number | string | nu
   return 'Contact for pricing';
 };
 
+// Trimmed 13 Aug 2026. Three typed lines at 45ms/char with 1200ms holds put a
+// ~9.4s gate in front of the homepage before a first-time visitor saw anything.
+// Line 2 ("Your story is your most undervalued asset") also restated the hero
+// — "They buy your story" — so it was paying 1.8s to say the same thing twice.
+// Two lines, faster cadence, shorter holds: ~4.8s.
 const INTRO_LINES = [
   'Every great brand begins with a truth.',
-  'Your story is your most undervalued asset.',
   'We turn lived experience into market authority.',
 ];
 
@@ -69,7 +73,7 @@ export default function HomePage() {
             currentText += targetLine[charIdx];
             setTypedText(currentText);
             charIdx++;
-            timeoutId = setTimeout(typeChar, 45);
+            timeoutId = setTimeout(typeChar, 32);
           } else {
             timeoutId = setTimeout(() => {
               lineIdx++;
@@ -82,13 +86,13 @@ export default function HomePage() {
                 // finished all lines
                 timeoutId = setTimeout(() => {
                   dismissIntro();
-                }, 1000);
+                }, 800);
               }
-            }, 1200);
+            }, 900);
           }
         };
 
-        timeoutId = setTimeout(typeChar, 400);
+        timeoutId = setTimeout(typeChar, 250);
 
         return () => clearTimeout(timeoutId);
       }

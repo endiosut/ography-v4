@@ -32,24 +32,19 @@ type CatalogItem = {
 };
 
 // Fallback items in case Supabase connection is unreachable
-const FALLBACK_ITEMS: CatalogItem[] = [
-  { id: '1', name: 'Echo Launch Kit', category: 'identity', description: 'Logo mark + 3 variants + mini brand system + color palette + typography selection. Everything you need to launch with a cohesive visual identity.', base_price_usd: 180, price_note: 'From $180 — one-time project', turnaround: '5-7 days', is_featured: true, is_active: true, sort_order: 1 },
-  { id: '2', name: 'Brand Amplification', category: 'identity', description: 'Full logo system + brand voice blueprint + Charte Graphique + cross-platform asset library. The complete identity architecture.', base_price_usd: 555, price_note: 'From $555 — full system', turnaround: '2 weeks', is_featured: true, is_active: true, sort_order: 2 },
-  { id: '3', name: 'Fractional Creative Partner', category: 'identity', description: 'Ongoing identity evolution + monthly asset production + strategic visual direction. Your creative department without the overhead.', base_price_usd: 1200, price_note: '$1,200/mo — ongoing partnership', turnaround: 'Monthly', is_featured: false, is_active: true, sort_order: 3 },
-  { id: '4', name: 'Social Media Starter Pack', category: 'content', description: '10 Instagram posts + 5 stories, fully branded, Canva-ready and editable. Launch your social presence in one delivery.', base_price_usd: 95, price_note: '$95 per set of 15 templates', turnaround: '3-5 days', is_featured: false, is_active: true, sort_order: 4 },
-  { id: '5', name: 'UGC Asset Kit', category: 'content', description: '15 branded templates — posts, stories, reel covers, thumbnails. Designed for content creators who need volume with consistency.', base_price_usd: 145, price_note: '$145 — 15 templates', turnaround: '5 days', is_featured: true, is_active: true, sort_order: 5 },
-  { id: '6', name: 'Monthly Content Bundle', category: 'content', description: '30 templates per month, refreshed every 30 days. Never run out of on-brand content. Cancel anytime.', base_price_usd: 280, price_note: '$280/mo — 30 templates', turnaround: 'Monthly', is_featured: false, is_active: true, sort_order: 6 },
-  { id: '7', name: 'Photo Retouch Pack', category: 'content', description: '50 batch retouched images with color grading and polish.', base_price_usd: 75, price_note: '$75 per 50 images', turnaround: '3-4 days', is_featured: false, is_active: true, sort_order: 7 },
-  { id: '8', name: 'Custom Lightroom Preset Pack', category: 'content', description: '5 tailored Lightroom presets designed to give your photography consistent aesthetic tone.', base_price_usd: 45, price_note: '$45 — 5 presets', turnaround: '2-3 days', is_featured: false, is_active: true, sort_order: 8 },
-  { id: '9', name: 'Event Pull-Up Banner', category: 'print', description: '85×200cm pull-up banner — design + print + delivery. Show up to your event with presence. One submission, one payment, banner arrives.', base_price_usd: 85, price_note: 'From $85 — design + print + delivery', turnaround: '5-7 days', is_featured: true, is_active: true, sort_order: 9 },
-  { id: '10', name: 'Business Card Set', category: 'print', description: 'Custom designed business cards — 250 cards printed on premium stock + delivered. First impression, handled.', base_price_usd: 65, price_note: '$65 — design + 250 cards + delivery', turnaround: '5 days', is_featured: false, is_active: true, sort_order: 10 },
-  { id: '11', name: 'Framed Wall Print', category: 'print', description: 'Museum-grade framed art prints for office and studio spaces.', base_price_usd: 120, price_note: 'From $120 — depends on size', turnaround: '5-7 days', is_featured: false, is_active: true, sort_order: 11 },
-  { id: '12', name: 'Event Identity Kit', category: 'print', description: 'Complete physical collateral kit for corporate events, badges, signage, and folders.', base_price_usd: 320, price_note: 'From $320 — full event kit', turnaround: '7-10 days', is_featured: false, is_active: true, sort_order: 12 },
-  { id: '13', name: 'Pitch Deck Design', category: 'digital', description: '20 high-converting slides formatted for investor presentations and sales decks.', base_price_usd: 220, price_note: 'From $220 — 20 slides', turnaround: '5-7 days', is_featured: false, is_active: true, sort_order: 13 },
-  { id: '14', name: 'Business Proposal', category: 'digital', description: '15-page branded document template for client pitches and RFPs.', base_price_usd: 180, price_note: 'From $180 — 15 pages', turnaround: '4-6 days', is_featured: false, is_active: true, sort_order: 14 },
-  { id: '15', name: 'Student CV & Portfolio', category: 'digital', description: 'Modern, ATS-friendly CV design and digital portfolio showcase.', base_price_usd: 75, price_note: '$75 — CV + cover letter', turnaround: '3 days', is_featured: false, is_active: true, sort_order: 15 },
-  { id: '16', name: 'Same-Day Event Edits', category: 'event', description: 'Express delivery of highlight photos within hours of event wrap.', base_price_usd: 350, price_note: 'From $350 — same-day delivery', turnaround: 'Same Day', is_featured: false, is_active: true, sort_order: 16 },
-];
+// FALLBACK_ITEMS removed 13 Aug 2026.
+//
+// It was a 16-item hardcoded array with synthetic ids '1'..'16', rendered
+// whenever the catalog fetch failed. Two consequences:
+//
+//  1. Those ids are not catalog_items UUIDs. "Add to cart" stored id '1', and
+//     the contact form's step 3 — which matches cart entries against real
+//     catalog_items.id — then selected nothing. A broken read produced a
+//     silently broken checkout.
+//  2. A failed database read rendered a perfect-looking catalog. The failure
+//     had no symptom, which is exactly how the ten-week portal bug survived.
+//
+// A read that fails must LOOK failed. See the error state below.
 
 const CATEGORY_MAP: Record<string, string[]> = {
   'All': [],
@@ -83,6 +78,7 @@ export default function CatalogPage() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [loading, setLoading] = useState(true);
   const [addedId, setAddedId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const { addToCart } = useCart();
 
@@ -114,18 +110,20 @@ export default function CatalogPage() {
         );
 
         if (!res.ok) {
-          console.error('Catalog fetch failed:', res.status, await res.text());
-          setItems(FALLBACK_ITEMS);
-          setFiltered(FALLBACK_ITEMS);
+          const body = await res.text();
+          console.error('[catalog] fetch failed:', res.status, body);
+          setLoadError(`Could not load services (HTTP ${res.status}).`);
           return;
         }
 
         const rawData = await res.json();
-        if (!Array.isArray(rawData) || rawData.length === 0) {
-          setItems(FALLBACK_ITEMS);
-          setFiltered(FALLBACK_ITEMS);
+        if (!Array.isArray(rawData)) {
+          console.error('[catalog] unexpected payload shape:', rawData);
+          setLoadError('Could not load services (unexpected response).');
           return;
         }
+        // An empty array is a legitimate answer, not an error. It renders the
+        // empty state below rather than being masked by placeholder data.
 
         const clean: CatalogItem[] = rawData
           .filter((i: any) => i && i.name && i.name !== 'ffdfd' && i.name !== 'dfdf' && i.is_active !== false)
@@ -151,9 +149,8 @@ export default function CatalogPage() {
         setItems(clean);
         setFiltered(clean);
       } catch (e) {
-        console.error('Catalog fetch error:', e);
-        setItems(FALLBACK_ITEMS);
-        setFiltered(FALLBACK_ITEMS);
+        console.error('[catalog] fetch threw:', e);
+        setLoadError('Could not reach the service catalog.');
       } finally {
         setLoading(false);
       }
@@ -242,7 +239,11 @@ export default function CatalogPage() {
           ))}
         </div>
         <div style={{ marginTop: '.75rem', fontSize: '.58rem', color: 'rgba(232,213,183,.18)', letterSpacing: '.06em' }}>
-          {loading ? 'Loading services...' : `${filtered.length} service${filtered.length !== 1 ? 's' : ''}`}
+          {loading
+            ? 'Loading services...'
+            : loadError
+              ? 'Services unavailable'
+              : `${filtered.length} service${filtered.length !== 1 ? 's' : ''}`}
         </div>
       </div>
 
@@ -253,6 +254,28 @@ export default function CatalogPage() {
             {[...Array(6)].map((_, i) => (
               <div key={i} style={{ background: '#0f0d0a', borderRadius: 8, padding: '1.75rem', height: 220, opacity: 0.4, animation: 'pulse 1.5s infinite' }} />
             ))}
+          </div>
+        ) : loadError ? (
+          // A failed read must look failed. Previously this branch rendered 16
+          // hardcoded services and the visitor saw a working catalog.
+          <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '1px solid rgba(224,112,112,.18)', background: 'rgba(224,112,112,.03)', borderRadius: 8 }}>
+            <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.3rem', color: '#f0e8d8', fontWeight: 300, marginBottom: '.75rem' }}>
+              We couldn&apos;t load the services
+            </div>
+            <div style={{ fontSize: '.75rem', color: 'rgba(232,213,183,.4)', lineHeight: 1.8, maxWidth: 380, margin: '0 auto 1.5rem' }}>
+              {loadError} This is on our side, not yours — nothing you did caused it.
+            </div>
+            <div style={{ display: 'flex', gap: '.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => window.location.reload()}
+                style={{ background: '#c9a96e', color: '#0a0906', border: 'none', padding: '.75rem 1.75rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 500, cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' }}
+              >
+                Try again
+              </button>
+              <Link href="/contact" style={{ color: '#c9a96e', border: '1px solid rgba(201,169,110,.3)', padding: '.75rem 1.75rem', fontSize: '.65rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
+                Request directly →
+              </Link>
+            </div>
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '5rem', color: 'rgba(232,213,183,.3)', fontSize: '.78rem' }}>
