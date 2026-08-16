@@ -20,7 +20,11 @@ type CartItem = {
   name: string;
   category?: string;
   description?: string;
+  /** Display string, e.g. "$1,200/mo — ongoing partnership". Never summed. */
   price: string | number;
+  /** Authoritative numeric price from catalog_items.base_price_usd. Summed. */
+  unit_price_usd?: number;
+  quantity?: number;
   turnaround?: string;
   stripe_link?: string;
 };
@@ -33,8 +37,28 @@ type CartContextType = {
   addToCart: (item: CartItem) => void;
   removeFromCart: (id: string) => void;
   clearCart: () => void;
+  setQuantity: (id: string, quantity: number) => void;
   setCartOpen: (open: boolean) => void;
 };
+
+// Parse a price for ARITHMETIC. The old implementation was
+//   parseFloat(String(price).replace(/[^0-9.]/g, ''))
+// which strips every non-digit and keeps every dot, so:
+//   "$1,200/mo"                  -> "1.200"  -> 1.2      (off by 1000x)
+//   "$280/mo — 30 templates"     -> "280.30" -> 280.3
+//   "$65 — design + 250 cards"   -> "65.250" -> 65.25
+// Prefer the numeric column; fall back to the FIRST money-shaped token only.
+export function priceToNumber(item: { unit_price_usd?: number; price?: string | number }): number {
+  if (typeof item.unit_price_usd === 'number' && Number.isFinite(item.unit_price_usd)) {
+    return item.unit_price_usd;
+  }
+  if (typeof item.price === 'number') return Number.isFinite(item.price) ? item.price : 0;
+  const raw = String(item.price ?? '');
+  const m = raw.match(/\d[\d,]*(?:\.\d+)?/);      // first number only
+  if (!m) return 0;
+  const n = parseFloat(m[0].replace(/,/g, ''));    // commas are separators, not decimals
+  return Number.isFinite(n) ? n : 0;
+}
 
 const CartContext = createContext<CartContextType | null>(null);
 
@@ -94,15 +118,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
     window.addEventListener('scroll', onScroll, { once: true, passive: true });
   }, [autoCloseTimer]);
 
+  // Adding an item already in the cart previously did `{ ...c }` — a copy with
+  // no change. Quantity controls therefore had nothing to control, and adding
+  // the same service twice was a no-op.
   const addToCart = useCallback((item: CartItem) => {
     setCart(prev => {
       const exists = prev.find(c => c.id === item.id);
-      return exists
-        ? prev.map(c => c.id === item.id ? { ...c } : c)
-        : [...prev, item];
+      if (!exists) return [...prev, { ...item, quantity: item.quantity ?? 1 }];
+      return prev.map(c =>
+        c.id === item.id ? { ...c, quantity: (c.quantity ?? 1) + (item.quantity ?? 1) } : c
+      );
     });
     openCartWithAutoClose();
   }, [openCartWithAutoClose]);
+
+  const setQuantity = useCallback((id: string, quantity: number) => {
+    setCart(prev =>
+      quantity <= 0
+        ? prev.filter(c => c.id !== id)
+        : prev.map(c => (c.id === id ? { ...c, quantity } : c))
+    );
+  }, []);
 
   const removeFromCart = useCallback((id: string) => {
     setCart(prev => prev.filter(c => c.id !== id));
@@ -110,14 +146,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => setCart([]), []);
 
-  const cartCount = cart.length;
-  const cartTotal = cart.reduce((s, i) => {
-    const p = parseFloat(String(i.price).replace(/[^0-9.]/g, '')) || 0;
-    return s + p;
-  }, 0);
+  // Count units, not lines — 3 of one service is 3 items in the badge.
+  const cartCount = cart.reduce((n, i) => n + (i.quantity ?? 1), 0);
+  const cartTotal = cart.reduce((sum, i) => sum + priceToNumber(i) * (i.quantity ?? 1), 0);
 
   return (
-    <CartContext.Provider value={{ cart, cartCount, cartTotal, cartOpen, addToCart, removeFromCart, clearCart, setCartOpen }}>
+    <CartContext.Provider value={{ cart, cartCount, cartTotal, cartOpen, addToCart, removeFromCart, setQuantity, clearCart, setCartOpen }}>
       {children}
     </CartContext.Provider>
   );
@@ -245,7 +279,7 @@ export function CartSidebar() {
           <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid rgba(201,169,110,.08)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
               <span style={{ fontSize: '.65rem', color: 'rgba(240,232,216,.35)' }}>Estimated</span>
-              <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', color: '#c9a96e' }}>${cartTotal.toLocaleString()}</span>
+              <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', color: '#c9a96e' }}>${cartTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
             </div>
 
             {allHaveStripe ? (

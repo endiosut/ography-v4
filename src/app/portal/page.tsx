@@ -242,6 +242,10 @@ export default function PortalPage() {
     n == null ? null : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
   const isDone = (p: Project) => ['completed', 'delivered'].includes(normaliseStage(p.stage));
+  const orderedServiceCount = new Set(
+    projects.map(p => (p.service_name || '').trim()).filter(Boolean)
+  ).size;
+
   const activeProjects = projects.filter(p => !isDone(p)).length;
   const completedProjects = projects.filter(p => isDone(p)).length;
 
@@ -331,7 +335,9 @@ export default function PortalPage() {
           {[
             { label: 'Active', value: activeProjects },
             { label: 'Completed', value: completedProjects },
-            { label: 'Services', value: catalogCount || '—' },
+            // Was `catalogCount` — the admin catalog total (16 active items),
+            // which is not this client's data. Now: distinct services they ordered.
+            { label: 'Services', value: orderedServiceCount || '—' },
           ].map(stat => (
             <div key={stat.label} style={{ border: '1px solid rgba(201,169,110,.1)', background: '#0f0d0a', padding: '1.25rem', textAlign: 'center', borderRadius: 4 }}>
               <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '2rem', color: '#c9a96e', fontWeight: 300, lineHeight: 1 }}>{stat.value}</div>
