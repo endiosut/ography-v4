@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const { name, email, phone, company, services, message, source } = body;
+    const { name, email, phone, company, services, message, source, catalogItems } = body;
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
@@ -31,6 +31,18 @@ export async function POST(req: NextRequest) {
       serviceName,
       notes,
       source: source || 'contact_form',
+      // Shape-validated here, PRICED in onboarding.ts from the database.
+      // Never accept a price from the browser.
+      catalogItems: Array.isArray(catalogItems)
+        ? catalogItems
+            .filter((c: unknown): c is { id: string; quantity?: unknown } =>
+              !!c && typeof (c as { id?: unknown }).id === 'string')
+            .map((c) => ({
+              id: c.id,
+              quantity: Math.min(99, Math.max(1, Math.floor(Number(c.quantity) || 1))),
+            }))
+            .slice(0, 20)
+        : undefined,
     });
 
     return NextResponse.json({ success: true, ...result });

@@ -6,6 +6,9 @@ import NavBar from '@/components/NavBar';
 import { createBrowserClient } from '@supabase/ssr';
 import { useCart } from '@/context/CartContext';
 
+// Guards the catalog link against the static-fallback ids ('1'..'11').
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ─────────────────────────────────────────────────────────────────
 //  OGraphy V4 — Contact Page (Final with validation)
 //  File: src/app/contact/page.tsx
@@ -163,6 +166,7 @@ function ContactPageInner() {
     setSelectedServices(prev => Array.from(new Set([...prev, ...matched])));
   }, [cart, liveServices]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [agreementId, setAgreementId] = useState<string | null>(null);
 
   const [phonePrefix, setPhonePrefix] = useState('+91');
 
@@ -265,12 +269,35 @@ function ContactPageInner() {
           phone: form.phone ? `${phonePrefix} ${form.phone}` : null,
           company: form.company || null,
           services: selectedServices.length > 0 ? selectedNames : null,
+          // ── CATALOG LINK (17 Aug 2026) ────────────────────────────────────
+          // Was: the form sent service NAMES only. `projects.catalog_item_id`
+          // was therefore null on all 18 rows, so `total_amount_usd` could not
+          // be derived and `agreements` stayed at 0 — which made both
+          // /portal/agreement/[id] and /portal/pay/[paymentId] unreachable.
+          //
+          // Now the real catalog_items.id travels with the submission.
+          // Quantity comes from the cart when the item is in it, else 1.
+          // Only UUIDs are sent: SERVICE_OPTIONS falls back to the static
+          // SERVICES array when the live fetch fails, and those ids are
+          // synthetic ('1'..'11'). Sending one would break the FK and lose
+          // the lead — the exact failure mode FALLBACK_ITEMS caused on
+          // /catalog. Server re-reads every price; nothing is trusted here.
+          catalogItems: selectedServices
+            .filter(id => UUID_RE.test(id))
+            .map(id => ({
+              id,
+              quantity: Math.max(1, Number(cart.find(c => String(c.id) === id)?.quantity) || 1),
+            })),
           message: form.message || null,
           source: form.source || 'contact_form',
         }),
       });
       if (!res.ok) throw new Error('Server error');
+      const data = await res.json().catch(() => ({} as { agreementId?: string | null }));
       sessionStorage.removeItem('og_contact_services');
+      // A priced submission now has a quote waiting. Surface it instead of
+      // ending at "we'll be in touch" — that dead end is why conversion is 0.
+      setAgreementId(typeof data?.agreementId === 'string' ? data.agreementId : null);
       setSuccess(true);
     } catch {
       alert('Network error. Please email ographyy@gmail.com directly.');
@@ -335,11 +362,12 @@ function ContactPageInner() {
               Request <em style={{ color: '#c9a96e', fontStyle: 'italic' }}>received.</em>
             </div>
             <p style={{ fontSize: '.82rem', color: '#6b6355', lineHeight: 1.9, maxWidth: 420, margin: '0 auto 2rem' }}>
-              We'll be in touch within 24 hours at <strong style={{ color: '#c9a96e' }}>{form.email}</strong>.<br />
-              Check your email for a confirmation from OGraphy Studio.
+              {agreementId
+                ? <>Your quote is ready. Sign in with <strong style={{ color: '#c9a96e' }}>{form.email}</strong> to review the line items and terms, then accept to continue.</>
+                : <>We'll be in touch within 24 hours at <strong style={{ color: '#c9a96e' }}>{form.email}</strong>.<br />Check your email for a confirmation from OGraphy Studio.</>}
             </p>
-            <Link href="/portal" style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.9rem 2.2rem', fontSize: '.68rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500, marginRight: '1rem' }}>
-              My Portal →
+            <Link href={agreementId ? `/portal/agreement/${agreementId}` : '/portal'} style={{ display: 'inline-block', background: '#c9a96e', color: '#0a0906', padding: '.9rem 2.2rem', fontSize: '.68rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none', fontWeight: 500, marginRight: '1rem' }}>
+              {agreementId ? 'View My Quote →' : 'My Portal →'}
             </Link>
             <Link href="/catalog" style={{ display: 'inline-block', background: 'transparent', border: '1px solid rgba(201,169,110,.3)', color: '#c9a96e', padding: '.9rem 2.2rem', fontSize: '.68rem', letterSpacing: '.14em', textTransform: 'uppercase', textDecoration: 'none' }}>
               Back to Services
