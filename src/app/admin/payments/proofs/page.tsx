@@ -128,19 +128,25 @@ export default function ProofsPage() {
       if (decision === 'rejected') {
         setNotice('Rejected. The client can correct and resubmit.')
       } else {
-        // Report per-channel truthfully rather than claiming "receipt sent".
-        const em = data.delivery?.email
-        const wa = data.delivery?.whatsapp
-        const sent = [em?.delivered && 'email', wa?.delivered && 'WhatsApp'].filter(Boolean)
-        const failed = [
-          !em?.delivered && `email (${em?.skipped ? 'not configured' : em?.error || 'failed'})`,
-          !wa?.delivered && `WhatsApp (${wa?.skipped ? 'not configured' : wa?.error || 'failed'})`,
-        ].filter(Boolean)
+        // Report what the OUTBOX says, not what we hoped. 'sent' means it left;
+        // 'pending' means it will be retried; 'skipped' means that channel has
+        // no credentials configured yet.
+        const rows: { channel: string; status: string; last_error?: string }[] = data.outbox || []
+        const sent = rows.filter(r => r.status === 'sent').map(r => r.channel)
+        const pending = rows.filter(r => r.status === 'pending').map(r => r.channel)
+        const skipped = rows.filter(r => r.status === 'skipped').map(r => r.channel)
+        const dead = rows.filter(r => r.status === 'dead').map(r => r.channel)
+        const noContact = Object.entries(data.queued || {})
+          .filter(([, v]) => !(v as { queued: boolean }).queued)
+          .map(([k, v]) => `${k}: ${(v as { reason?: string }).reason}`)
 
         setNotice(
-          `Approved — payment marked received.` +
+          'Approved — payment marked received.' +
           (sent.length ? ` Receipt sent by ${sent.join(' and ')}.` : '') +
-          (failed.length ? ` NOT delivered: ${failed.join('; ')}.` : '')
+          (pending.length ? ` Queued (will retry): ${pending.join(', ')}.` : '') +
+          (skipped.length ? ` Not configured: ${skipped.join(', ')}.` : '') +
+          (dead.length ? ` FAILED after retries: ${dead.join(', ')}.` : '') +
+          (noContact.length ? ` No contact for — ${noContact.join('; ')}.` : '')
         )
       }
 

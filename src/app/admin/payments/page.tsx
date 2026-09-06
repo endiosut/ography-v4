@@ -17,6 +17,35 @@ export default function PaymentsPage() {
   const [filter, setFilter] = useState('all')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const issueLink = async (id: string) => {
+    setBusyId(id); setError(null); setNotice(null)
+    try {
+      const res = await fetch('/api/admin/payments/issue-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId: id, notify: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Could not issue a link.'); return }
+
+      const mins = data.windowMinutes
+      const until = new Date(data.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      setNotice(
+        `Window open for ${mins} min (until ${until}). ` +
+        (data.notificationQueued
+          ? 'The client has been notified.'
+          : 'No email or phone on file — send them this link yourself: ') +
+        (data.notificationQueued ? '' : data.payUrl)
+      )
+    } catch (e) {
+      console.error('[admin/payments] issueLink:', e)
+      setError('Could not reach the server.')
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   useEffect(() => {
     supabase.from('payments')
@@ -160,9 +189,23 @@ export default function PaymentsPage() {
                     <td style={{padding:'.8rem 1rem', fontFamily:'IBM Plex Mono,monospace', fontSize:'.65rem', color:'var(--cream-dim)'}}>{p.paid_at ? new Date(p.paid_at).toLocaleDateString() : '—'}</td>
                     <td style={{padding:'.8rem 1rem'}}>
                       {p.status === 'pending' && (
-                        <button onClick={() => markPaid(p.id)} style={{background:'transparent', border:'1px solid rgba(39,174,96,.4)', color:'#27ae60', padding:'.2rem .6rem', fontSize:'.58rem', cursor:'pointer', fontFamily:'Montserrat,sans-serif', letterSpacing:'.08em'}}>
-                          Mark Paid
-                        </button>
+                        <div style={{display:'flex', gap:'.35rem', flexWrap:'wrap'}}>
+                          <button onClick={() => markPaid(p.id)} style={{background:'transparent', border:'1px solid rgba(39,174,96,.4)', color:'#27ae60', padding:'.2rem .6rem', fontSize:'.58rem', cursor:'pointer', fontFamily:'Montserrat,sans-serif', letterSpacing:'.08em'}}>
+                            Mark Paid
+                          </button>
+                          {/* A window could previously only be opened at the
+                              moment an agreement was accepted. Balances, hand-made
+                              payments and clients who used up their two renewals
+                              had no route to one at all. */}
+                          <button
+                            onClick={() => issueLink(p.id)}
+                            disabled={busyId === p.id || p.amount_usd == null}
+                            title={p.amount_usd == null ? 'Set an amount first — a window on an amount-less payment counts down to nothing' : 'Open a fresh payment window and notify the client'}
+                            style={{background:'transparent', border:'1px solid rgba(201,169,110,.4)', color:'var(--gold)', padding:'.2rem .6rem', fontSize:'.58rem', cursor: p.amount_usd == null ? 'not-allowed' : 'pointer', fontFamily:'Montserrat,sans-serif', letterSpacing:'.08em', opacity: p.amount_usd == null ? .4 : 1}}
+                          >
+                            {busyId === p.id ? '…' : 'Issue Link'}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>

@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail, sendWhatsApp } from '@/lib/modules/deliver';
+import { enqueueAndTry } from '@/lib/modules/outbox';
 import { receiptHtml, receiptText, receiptSubject } from '@/lib/modules/receipt';
 import { fireEvent } from '@/lib/modules/notify';
 import { SUPPORT_EMAIL } from '@/lib/support';
@@ -180,29 +180,55 @@ export async function POST(req: NextRequest) {
       balanceUsd: project?.balance_due_usd ?? null,
     };
 
-    // Delivery is best-effort and reported per channel. An undelivered receipt
-    // must not roll back a real payment.
-    const [emailRes, waRes] = await Promise.all([
-      client?.email
-        ? sendEmail({
-            to: client.email,
-            subject: receiptSubject(receipt),
-            html: receiptHtml(receipt),
-            replyTo: SUPPORT_EMAIL,
-          })
-        : Promise.resolve({ channel: 'email' as const, delivered: false, error: 'no_email' }),
-      client?.phone
-        ? sendWhatsApp({
-            to: client.phone,
-            text: receiptText(receipt),
-            template: process.env.WHATSAPP_RECEIPT_TEMPLATE,
-            templateParams: process.env.WHATSAPP_RECEIPT_TEMPLATE
-              ? [receipt.clientName, receipt.projectRef,
-                 `$${receipt.amountUsd.toFixed(2)}`, receipt.portalUrl]
-              : undefined,
-          })
-        : Promise.resolve({ channel: 'whatsapp' as const, delivered: false, error: 'no_phone' }),
-    ]);
+    // The receipt goes through the OUTBOX, not straight out on the wire.
+    //
+    // A receipt that fires once and loses to a transient blip is a client who
+    // paid and got nothing. Queuing it makes the message durable first: it is
+    // retried with backoff, and the dedupe key means re-approving or a retry of
+    // this request cannot double-send.
+    const dedupe = `receipt:${payment.id}`;
+
+    const queued: Record<string, { queued: boolean; duplicate?: boolean; reason?: string }> = {};
+
+    if (client?.email) {
+      const r = await enqueueAndTry({
+        event: 'RECEIPT',
+        channel: 'email',
+        recipient: client.email,
+        subject: receiptSubject(receipt),
+        bodyHtml: receiptHtml(receipt),
+        bodyText: receiptText(receipt),
+        payload: { replyTo: SUPPORT_EMAIL },
+        paymentId: payment.id,
+        projectId: project?.id ?? null,
+        dedupeKey: `${dedupe}:email`,
+      });
+      queued.email = { queued: true, duplicate: r.duplicate };
+    } else {
+      queued.email = { queued: false, reason: 'no email on file' };
+    }
+
+    if (client?.phone) {
+      const r = await enqueueAndTry({
+        event: 'RECEIPT',
+        channel: 'whatsapp',
+        recipient: client.phone,
+        bodyText: receiptText(receipt),
+        payload: process.env.WHATSAPP_RECEIPT_TEMPLATE
+          ? {
+              template: process.env.WHATSAPP_RECEIPT_TEMPLATE,
+              templateParams: [receipt.clientName, receipt.projectRef,
+                               `$${receipt.amountUsd.toFixed(2)}`, receipt.portalUrl],
+            }
+          : {},
+        paymentId: payment.id,
+        projectId: project?.id ?? null,
+        dedupeKey: `${dedupe}:whatsapp`,
+      });
+      queued.whatsapp = { queued: true, duplicate: r.duplicate };
+    } else {
+      queued.whatsapp = { queued: false, reason: 'no phone on file' };
+    }
 
     await fireEvent({
       event: 'PAYMENT_PROOF_REVIEWED',
@@ -217,11 +243,20 @@ export async function POST(req: NextRequest) {
       timestamp: now,
     });
 
+    // Report what was QUEUED. Claiming "sent" here would be the same lie the
+    // old n8n call told — the outbox is the record of what actually left.
+    const { data: outboxRows } = await sb
+      .from('notification_outbox')
+      .select('channel,status,last_error')
+      .eq('payment_id', payment.id)
+      .eq('event', 'RECEIPT');
+
     return NextResponse.json({
       ok: true,
       decision,
       amountUsd: receipt.amountUsd,
-      delivery: { email: emailRes, whatsapp: waRes },
+      queued,
+      outbox: outboxRows ?? [],
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'review failed';
