@@ -79,6 +79,52 @@ export async function POST(req: NextRequest) {
       paymentId = deposit?.id ?? null;
     }
 
+    // ── OPEN THE PAYMENT WINDOW ─────────────────────────────────────────────
+    // payment_links existed with an expires_at column, but nothing in the app
+    // had ever created a row or set an expiry — all 8 historical rows had
+    // expires_at NULL, so the countdown on /portal/pay could never render.
+    // The window opens here, at the moment the client commits.
+    let expiresAt: string | null = null;
+    if (paymentId && project?.id) {
+      const windowMinutes = Math.min(30, Math.max(15,
+        Number(process.env.PAYMENT_WINDOW_MINUTES) || 30));
+
+      const { data: existing } = await sb
+        .from('payment_links')
+        .select('id, expires_at')
+        .eq('payment_id', paymentId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.id) {
+        expiresAt = existing.expires_at;
+      } else {
+        const until = new Date(Date.now() + windowMinutes * 60_000).toISOString();
+        const { data: link, error: linkErr } = await sb
+          .from('payment_links')
+          .insert({
+            project_id: project.id,
+            payment_id: paymentId,
+            expires_at: until,
+            window_minutes: windowMinutes,
+            max_renewals: 2,
+            renewals_used: 0,
+            is_active: true,
+          })
+          .select('expires_at')
+          .maybeSingle();
+
+        if (linkErr) {
+          // A missing window must not block payment — the pay page treats a
+          // null expiry as "no timer", not as "expired".
+          console.error('[agreements/accepted] payment_link create failed:', linkErr.message);
+        } else {
+          expiresAt = link?.expires_at ?? null;
+        }
+      }
+    }
+
     const origin =
       process.env.NEXT_PUBLIC_SITE_URL ||
       req.headers.get('origin') ||
@@ -108,6 +154,7 @@ export async function POST(req: NextRequest) {
       notifyStatus: result.status ?? null,
       paymentId,
       actionUrl,
+      expiresAt,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'failed';

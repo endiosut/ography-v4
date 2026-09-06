@@ -71,8 +71,8 @@ function BriefPageInner() {
   useEffect(() => {
     const init = async () => {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const sb = createClient(SB_URL, SB_ANON);
+        const { createBrowserClient } = await import('@supabase/ssr');
+        const sb = createBrowserClient(SB_URL, SB_ANON);
         const { data: { user: u } } = await sb.auth.getUser();
         if (!u) { router.push('/login?next=/portal'); return; }
         setUser({ email: u.email || '', name: u.user_metadata?.full_name });
@@ -91,8 +91,14 @@ function BriefPageInner() {
   const submit = async () => {
     setSubmitting(true);
     try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const sb = createClient(SB_URL, SB_ANON);
+      // createBrowserClient, NOT createClient. The plain client carries no
+      // session, so auth.uid() is null for every request it makes. That was
+      // survivable only while brief-files storage granted INSERT to `public`;
+      // once that hole was closed (migration 010) an unauthenticated upload is
+      // correctly refused, and this page would have silently stopped
+      // accepting attachments.
+      const { createBrowserClient } = await import('@supabase/ssr');
+      const sb = createBrowserClient(SB_URL, SB_ANON);
 
       const fileUrls: string[] = [];
       for (const file of brief.files) {

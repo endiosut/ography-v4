@@ -104,73 +104,54 @@ export default function ProofsPage() {
 
     setBusyId(p.id); setError(null); setNotice(null)
 
-    const { data: { user } } = await supabase.auth.getUser()
-
-    // Step 1 — record the decision.
-    const { error: proofErr } = await supabase
-      .from('payment_proofs')
-      .update({
-        review_status: decision,
-        review_note: note || null,
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: user?.id ?? null,
+    // Server route, not three client-side writes.
+    //
+    // Approval touches payment_proofs, payments, projects and briefs, then has
+    // to send a receipt — and the delivery channels only exist server-side. Done
+    // from the browser, any step could half-succeed with no way to notify
+    // afterwards. The route establishes admin identity from the session cookie,
+    // never from anything this page sends.
+    try {
+      const res = await fetch('/api/admin/proofs/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proofId: p.id, decision, note }),
       })
-      .eq('id', p.id)
+      const data = await res.json()
 
-    if (proofErr) {
-      console.error('[admin/proofs] review:', proofErr.message, proofErr.code)
-      setError(
-        proofErr.code === '42501'
-          ? 'The database refused this write (RLS). Confirm you are signed in as the admin account.'
-          : `Could not save the decision: ${proofErr.message}`
-      )
-      setBusyId(null)
-      return
-    }
+      if (!res.ok) {
+        setError(data.error || 'The review could not be saved.')
+        setBusyId(null)
+        return
+      }
 
-    // Step 2 — approval also means the money is in. Separate write, separately
-    // checked: an approved proof with an unpaid payment is recoverable (the
-    // Payments screen can still mark it paid), but silently pretending both
-    // succeeded is not.
-    if (decision === 'approved' && p.payment_id) {
-      const paidAt = new Date().toISOString()
-      const { error: payErr } = await supabase
-        .from('payments')
-        .update({
-          status: 'paid',
-          paid_at: paidAt,
-          payment_method_id: p.payment_method_id,
-        })
-        .eq('id', p.payment_id)
+      if (decision === 'rejected') {
+        setNotice('Rejected. The client can correct and resubmit.')
+      } else {
+        // Report per-channel truthfully rather than claiming "receipt sent".
+        const em = data.delivery?.email
+        const wa = data.delivery?.whatsapp
+        const sent = [em?.delivered && 'email', wa?.delivered && 'WhatsApp'].filter(Boolean)
+        const failed = [
+          !em?.delivered && `email (${em?.skipped ? 'not configured' : em?.error || 'failed'})`,
+          !wa?.delivered && `WhatsApp (${wa?.skipped ? 'not configured' : wa?.error || 'failed'})`,
+        ].filter(Boolean)
 
-      if (payErr) {
-        console.error('[admin/proofs] mark paid:', payErr.message, payErr.code)
-        setError(
-          `The proof was approved but the PAYMENT COULD NOT BE MARKED PAID: ${payErr.message}. ` +
-          'Fix it on the Payments screen before treating this as collected.'
+        setNotice(
+          `Approved — payment marked received.` +
+          (sent.length ? ` Receipt sent by ${sent.join(' and ')}.` : '') +
+          (failed.length ? ` NOT delivered: ${failed.join('; ')}.` : '')
         )
-        await load()
-        setBusyId(null)
-        return
       }
 
-      // Re-query the row itself. A refused update returns no error either.
-      const { data: row } = await supabase
-        .from('payments').select('status').eq('id', p.payment_id).maybeSingle()
-      if (row?.status !== 'paid') {
-        setError('The payment still is not marked paid after approving. Nothing was collected — check the Payments screen.')
-        await load()
-        setBusyId(null)
-        return
-      }
+      setNotes(n => ({ ...n, [p.id]: '' }))
+      await load()
+    } catch (e) {
+      console.error('[admin/proofs] review failed:', e)
+      setError('Could not reach the review service. Nothing was changed.')
+    } finally {
+      setBusyId(null)
     }
-
-    setNotice(decision === 'approved'
-      ? 'Approved — payment marked received and the client’s project moves on.'
-      : 'Rejected. The client can correct and resubmit.')
-    setNotes(n => ({ ...n, [p.id]: '' }))
-    await load()
-    setBusyId(null)
   }
 
   const openCount = proofs.filter(p => ['submitted', 'under_review'].includes(p.review_status)).length

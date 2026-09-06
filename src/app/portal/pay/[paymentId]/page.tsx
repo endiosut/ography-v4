@@ -210,6 +210,14 @@ export default function PayPage() {
   const [methods, setMethods] = useState<Method[]>([]);
   const [proof, setProof] = useState<Proof | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [renewalsUsed, setRenewalsUsed] = useState(0);
+  const [maxRenewals, setMaxRenewals] = useState(2);
+  const [extending, setExtending] = useState(false);
+  // Feedback captured at the moment the window runs out, rather than guessed
+  // at afterwards. This is the escalation path to customer service.
+  const [fb, setFb] = useState({ reason: '', detail: '', rating: 0, wantsContact: true });
+  const [fbSent, setFbSent] = useState(false);
+  const [fbBusy, setFbBusy] = useState(false);
 
   const [chosen, setChosen] = useState<string | null>(null);
   const [reference, setReference] = useState('');
@@ -238,11 +246,18 @@ export default function PayPage() {
       if (pay.project_id) {
         const [{ data: proj }, { data: link }] = await Promise.all([
           sb.from('projects').select('id,project_ref,service_name').eq('id', pay.project_id).maybeSingle(),
-          sb.from('payment_links').select('expires_at,is_active').eq('project_id', pay.project_id)
-            .eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+          // Keyed on payment_id now, not project_id: a project with a deposit
+          // AND a balance has two payments, and the project-wide query handed
+          // both of them whichever window happened to be newest.
+          sb.from('payment_links')
+            .select('expires_at,is_active,renewals_used,max_renewals,window_minutes')
+            .eq('payment_id', paymentId)
+            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         ]);
         if (proj) setProject(proj as Project);
-        if (link?.expires_at) setExpiresAt(link.expires_at as string);
+        setExpiresAt((link?.expires_at as string) ?? null);
+        setRenewalsUsed(Number(link?.renewals_used ?? 0));
+        setMaxRenewals(Number(link?.max_renewals ?? 2));
       }
 
       // Ordered + limit(1), NOT maybeSingle() on the bare filter.
@@ -297,6 +312,62 @@ export default function PayPage() {
       } catch (e) { console.error('[pay] qr url:', e); setQrUrl(null); }
     })();
   }, [chosen, methods]);
+
+  // Renew the window. The cap lives on the server — this button only asks.
+  const extendWindow = async () => {
+    if (!payment) return;
+    setExtending(true); setError(null);
+    try {
+      const r = await fetch('/api/payments/extend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId: payment.id }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data.message || data.error || 'Could not extend the window.');
+        if (data.renewalsUsed != null) setRenewalsUsed(Number(data.renewalsUsed));
+        return;
+      }
+      setExpiresAt(data.expiresAt);
+      setRenewalsUsed(Number(data.renewalsUsed));
+      setMaxRenewals(Number(data.maxRenewals));
+    } catch (e) {
+      console.error('[pay] extend failed:', e);
+      setError('Could not reach the server. Please try again.');
+    } finally {
+      setExtending(false);
+    }
+  };
+
+  const sendFeedback = async () => {
+    if (!payment) return;
+    if (!fb.reason) { setError('Pick what got in the way so we can fix it.'); return; }
+    setFbBusy(true); setError(null);
+    try {
+      const sb = getSupabase();
+      const { error: insErr } = await sb.from('payment_feedback').insert({
+        payment_id: payment.id,
+        project_id: payment.project_id,
+        reason: fb.reason,
+        detail: fb.detail.trim() || null,
+        rating: fb.rating || null,
+        wants_contact: fb.wantsContact,
+        contact_channel: fb.wantsContact ? 'whatsapp_or_email' : null,
+      });
+      if (insErr) {
+        console.error('[pay] feedback insert:', insErr.message, insErr.code);
+        setError('We could not record that. Please message us directly instead.');
+        return;
+      }
+      setFbSent(true);
+    } catch (e) {
+      console.error('[pay] feedback threw:', e);
+      setError('We could not record that. Please message us directly instead.');
+    } finally {
+      setFbBusy(false);
+    }
+  };
 
   const submit = async () => {
     if (!payment) return;
@@ -442,8 +513,144 @@ export default function PayPage() {
             color: countdown.expired ? '#e07070' : countdown.urgent ? '#e0b470' : 'rgba(232,213,183,.5)',
           }}>
             {countdown.expired
-              ? 'This payment window has closed. Contact us and we will reissue it.'
+              ? 'This payment window has closed.'
               : `Payment window — ${countdown.text}`}
+            {!countdown.expired && renewalsUsed > 0 && (
+              <span style={{ opacity: .7 }}>
+                {' '}· extended {renewalsUsed} of {maxRenewals}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* ── WINDOW EXPIRED ────────────────────────────────────────────────
+            Two renewals, then a human. Handing someone a fourth identical
+            window they have already failed to use is not help. */}
+        {countdown?.expired && !isPaid && (
+          <div style={{
+            border: '1px solid rgba(224,112,112,.3)', background: 'rgba(224,112,112,.05)',
+            borderRadius: 6, padding: '1.25rem', marginBottom: '1.5rem',
+          }}>
+            <div style={{ fontSize: '.78rem', color: '#e07070', marginBottom: '.5rem' }}>
+              Your payment window has closed
+            </div>
+            <div style={{ fontSize: '.72rem', color: 'rgba(232,213,183,.55)', lineHeight: 1.7 }}>
+              Nothing has been charged and your quote is unchanged.
+              {renewalsUsed < maxRenewals
+                ? ' You can reopen it now.'
+                : ' You have reopened it twice already, so this one is on us to sort out with you directly.'}
+            </div>
+
+            {renewalsUsed < maxRenewals ? (
+              <button
+                onClick={extendWindow}
+                disabled={extending}
+                style={{
+                  marginTop: '1rem', background: gold, color: ink, border: 'none',
+                  padding: '.75rem 1.6rem', borderRadius: 4, cursor: extending ? 'wait' : 'pointer',
+                  fontSize: '.65rem', letterSpacing: '.12em', textTransform: 'uppercase',
+                  fontWeight: 600, fontFamily: 'Montserrat, sans-serif',
+                }}
+              >
+                {extending ? 'Reopening…' : `Give me more time (${maxRenewals - renewalsUsed} left)`}
+              </button>
+            ) : (
+              <PayHelp payRef={payRef} />
+            )}
+
+            {/* Ask WHY, at the moment it happened. */}
+            {!fbSent ? (
+              <div style={{ marginTop: '1.35rem', paddingTop: '1.1rem', borderTop: '1px solid rgba(201,169,110,.12)' }}>
+                <div style={{ fontSize: '.68rem', color: 'rgba(232,213,183,.5)', marginBottom: '.6rem' }}>
+                  What got in the way? This goes straight to us.
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem', marginBottom: '.7rem' }}>
+                  {[
+                    ['amount_unclear', 'I was not sure how much to send'],
+                    ['method_missing', 'My payment method is not listed'],
+                    ['transfer_failed', 'My transfer failed or was declined'],
+                    ['needed_time', 'I just needed more time'],
+                    ['changed_mind', 'I am reconsidering the project'],
+                    ['other', 'Something else'],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => setFb(f => ({ ...f, reason: value }))}
+                      style={{
+                        border: `1px solid ${fb.reason === value ? gold : 'rgba(201,169,110,.2)'}`,
+                        background: fb.reason === value ? 'rgba(201,169,110,.1)' : 'transparent',
+                        color: fb.reason === value ? '#f0e8d8' : 'rgba(232,213,183,.5)',
+                        borderRadius: 4, padding: '.45rem .8rem', cursor: 'pointer',
+                        fontSize: '.63rem', fontFamily: 'Montserrat, sans-serif',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  value={fb.detail}
+                  onChange={e => setFb(f => ({ ...f, detail: e.target.value }))}
+                  placeholder="Anything else we should know (optional)"
+                  style={{
+                    width: '100%', boxSizing: 'border-box', minHeight: 58, resize: 'vertical',
+                    background: 'rgba(25,22,15,.9)', border: '1px solid rgba(201,169,110,.18)',
+                    color: '#f0e8d8', padding: '.55rem .7rem', fontSize: '.7rem',
+                    fontFamily: 'Montserrat, sans-serif', outline: 'none',
+                  }}
+                />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', margin: '.7rem 0' }}>
+                  <span style={{ fontSize: '.63rem', color: 'rgba(232,213,183,.35)' }}>
+                    How easy was this to use?
+                  </span>
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setFb(f => ({ ...f, rating: n }))}
+                      aria-label={`${n} out of 5`}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                        fontSize: '1rem', lineHeight: 1,
+                        color: fb.rating >= n ? gold : 'rgba(201,169,110,.25)',
+                      }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.65rem', color: 'rgba(232,213,183,.45)', cursor: 'pointer', marginBottom: '.8rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={fb.wantsContact}
+                    onChange={e => setFb(f => ({ ...f, wantsContact: e.target.checked }))}
+                  />
+                  Have someone get back to me
+                </label>
+
+                <button
+                  onClick={sendFeedback}
+                  disabled={fbBusy}
+                  style={{
+                    background: 'transparent', border: `1px solid ${gold}`, color: gold,
+                    padding: '.6rem 1.4rem', borderRadius: 4, cursor: fbBusy ? 'wait' : 'pointer',
+                    fontSize: '.63rem', letterSpacing: '.12em', textTransform: 'uppercase',
+                    fontFamily: 'Montserrat, sans-serif',
+                  }}
+                >
+                  {fbBusy ? 'Sending…' : 'Send'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: '1.35rem', paddingTop: '1.1rem', borderTop: '1px solid rgba(201,169,110,.12)', fontSize: '.72rem', color: '#4a9e6b', lineHeight: 1.7 }}>
+                Thank you — that reached us.
+                {fb.wantsContact ? ' Someone will get back to you.' : ''}
+                <PayHelp payRef={payRef} />
+              </div>
+            )}
           </div>
         )}
 
