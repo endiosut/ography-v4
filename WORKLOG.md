@@ -8,6 +8,85 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-06 (b) · Claude Opus 5 · Drop Stripe; wire the P2P settlement loop
+
+```
+ITEM        Owner rejected the Stripe Checkout direction. Wanted: client picks a
+            settlement rail (UPI / QR / mobile money / bank transfer / crypto),
+            admin manages rails internally. Also asked how and when the deposit
+            link reaches the client after they sign.
+
+ROOT CAUSE  IT NEVER REACHED THEM. There is no send, and there was no link.
+              - accept() on /portal/agreement writes status='accepted' then
+                calls load(), re-rendering the same page.
+              - agreements_on_accept opens a `deposit` payments row — but it is
+                a DB trigger and cannot notify anyone.
+              - fireEvent (the n8n hook) is reachable ONLY from handleLead and
+                logEvent. Acceptance goes browser -> Postgres directly and never
+                touches the app server, so no event fires.
+              - `grep -rn "portal/pay" src/ --include=*.tsx` returns ZERO hrefs.
+                /portal/pay/[paymentId] was an orphan route.
+            So the client signed, a payment row appeared in the database, and
+            nothing linked to it or mentioned it. 2 agreements -> 0 collected.
+
+            SECOND ROOT CAUSE — the admin half was dead at the database.
+            `payments` has RLS on, policy payments_select_own (SELECT), and NO
+            update policy for any role. /admin/payments ran
+              await supabase.from('payments').update(...)  // error discarded
+              setPayments(...)                             // optimistic repaint
+            Every "Mark Paid" was refused by RLS and rendered as success, then
+            reverted on reload. The approval loop has never once worked.
+
+CHANGE      DELETED  src/app/api/checkout/route.ts
+                     src/app/api/stripe/webhook/route.ts
+                     src/lib/pricing.ts
+                     — no code path in the repo creates a Stripe Checkout
+                       Session any more.
+            portal/agreement/[id]  acceptance resolves the deposit row and
+                                   routes to /portal/pay/[id]; accepted view
+                                   keeps a persistent "Choose how to pay" link.
+            admin/payments         markPaid reads the error and RE-QUERIES the
+                                   row; UI changes only if the DB changed.
+            admin/payments/methods NEW. Rail manager: create/edit, live toggle
+                                   separate from save, zero-live-rails banner,
+                                   network required for crypto.
+            AdminSidebar           + "Pay Rails".
+            CartContext            cart -> quote, no card checkout.
+            008_payment_rails.sql  REWRITTEN for the P2P model. NOT APPLIED.
+
+STATUS      verified-deployed (code). Schema NOT applied — needs approval.
+
+VERIFY      Stripe is gone from production:
+              curl -o /dev/null -w "%{http_code}" -X POST \
+                https://ography-v4.vercel.app/api/checkout   -> 404
+              curl -o /dev/null -w "%{http_code}" -X POST \
+                https://ography-v4.vercel.app/api/stripe/webhook -> 404
+              curl -o /dev/null -w "%{http_code}" \
+                https://ography-v4.vercel.app/              -> 200
+            Route table from `next build` shows neither route.
+
+OPEN        Blocking, in order:
+            1. payment_methods still has 0 rows. Until a rail is live, the pay
+               page is still a dead end. /admin/payments/methods now creates
+               them but needs your real account details.
+            2. Migration section 1 (admin write policy on payments) must be
+               applied or "Mark Paid" will keep failing — honestly now, but
+               still failing.
+            3. Proof review UI (approve/reject) not built yet.
+            4. Nothing still notifies the client on acceptance — the in-app
+               redirect covers the same-session case only. Email/WhatsApp on
+               AGREEMENT_ACCEPTED is not wired.
+            5. /portal/pay does not yet show network / memo / local-currency
+               amount, and has no copy-to-clipboard (a QR is unusable when the
+               client is paying on the same phone).
+
+COMMIT      5e03871 (code) · previous 2fc348d
+DEPLOY      auto from main push; /api/checkout + /api/stripe/webhook both 404
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-06 · Claude Opus 5 · Homepage intro + the missing checkout rail
 
 ```
