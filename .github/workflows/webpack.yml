@@ -1,28 +1,56 @@
-name: NodeJS with Webpack
+name: CI
+
+# Replaced the "NodeJS with Webpack" starter template, which could not have
+# passed once:
+#   · `npx webpack` — this project has no webpack. It is Next.js 16 built with
+#     Turbopack, and webpack is not a dependency, so the step exits non-zero on
+#     every push.
+#   · node 18.x / 20.x — the project targets Node 24.x (see AGENTS.md).
+# A workflow that is red on every commit trains you to ignore CI, which is
+# worse than having none.
+#
+# This runs what actually guards the codebase: install, typecheck, lint, build.
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
 
-    - name: Build
-      run: |
-        npm install
-        npx webpack
+      # `npm ci` not `npm install`: it installs exactly what package-lock.json
+      # pins, so CI cannot pass on a dependency tree the repo does not describe.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Informational, not a gate. There are 71 pre-existing lint errors in the
+      # tree; failing on them would put CI right back to red-on-every-push,
+      # which is the thing this workflow is replacing. Make it blocking once
+      # the backlog is cleared.
+      - name: Lint (non-blocking)
+        run: npm run lint
+        continue-on-error: true
+
+      # Placeholders so the build resolves env-dependent modules. These are NOT
+      # secrets — the anon key is public by design, and nothing here reaches a
+      # real database during a build.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://unzwefrtgsgmtljlbavf.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'build-placeholder' }}
