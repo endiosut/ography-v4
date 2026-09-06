@@ -48,6 +48,19 @@ const TYPE_LABEL: Record<string, string> = {
 // the funds, so this is a required field for crypto, not a nicety.
 const NETWORKS = ['TRC20', 'ERC20', 'BEP20', 'SOL', 'Lightning', 'BTC']
 
+// QR codes live in `payment-qr`, NOT `catalog-images`.
+//
+// catalog-images grants INSERT/UPDATE/DELETE to `public`, so any anonymous
+// visitor can overwrite an object in it. A payment QR stored there could be
+// swapped for an attacker's own code and silently collect every future
+// payment. `payment-qr` is public to read and admin-only to write.
+const QR_BUCKET = 'payment-qr'
+
+// HEIC matters: iPhones shoot HEIC by default, and a QR screenshot saved from
+// a phone is the most likely file here.
+const QR_ACCEPT = 'image/png,image/jpeg,image/webp,image/heic,image/heif,image/*'
+const QR_MAX_BYTES = 5 * 1024 * 1024
+
 const blank = (): Partial<Method> => ({
   label: '', method_type: 'upi', country_code: '', currency_code: 'USD',
   asset_code: '', network: '', memo_tag: '', instructions: '',
@@ -62,6 +75,60 @@ export default function PaymentMethodsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [qrBusy, setQrBusy] = useState(false)
+  // Public URL for the QR currently on the draft, so the admin sees the actual
+  // stored image rather than a filename they have to trust.
+  const [qrPreview, setQrPreview] = useState<string | null>(null)
+
+  const qrPublicUrl = useCallback((path: string | null | undefined) => {
+    if (!path) return null
+    const { data } = supabase.storage.from(QR_BUCKET).getPublicUrl(path)
+    return data?.publicUrl ?? null
+  }, [])
+
+  // Keep the preview in step with whichever rail is being edited.
+  useEffect(() => {
+    setQrPreview(qrPublicUrl(draft?.qr_code_path))
+  }, [draft?.qr_code_path, qrPublicUrl])
+
+  const uploadQr = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('The QR must be an image file.')
+      return
+    }
+    if (file.size > QR_MAX_BYTES) {
+      setError(`That image is ${(file.size / 1024 / 1024).toFixed(1)}MB — keep it under 5MB.`)
+      return
+    }
+
+    setQrBusy(true); setError(null); setNotice(null)
+
+    // Path is keyed on the rail where one exists, and on a timestamp for a rail
+    // that has not been saved yet, so two drafts cannot collide.
+    const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-60)
+    const key = draft?.id || `new-${Date.now()}`
+    const path = `${key}/${Date.now()}-${safe}`
+
+    const { error: upErr } = await supabase.storage
+      .from(QR_BUCKET).upload(path, file, { upsert: true, contentType: file.type })
+
+    if (upErr) {
+      console.error('[admin/methods] qr upload:', upErr.message)
+      setError(
+        /row-level security|not authorized|403/i.test(upErr.message)
+          ? 'Storage refused the upload. Confirm you are signed in as the admin account.'
+          : `QR upload failed: ${upErr.message}`
+      )
+      setQrBusy(false)
+      return
+    }
+
+    // Held on the draft only. It reaches the database when the rail is saved,
+    // so an accidental upload can be abandoned by cancelling.
+    setDraft(d => (d ? { ...d, qr_code_path: path } : d))
+    setQrBusy(false)
+    setNotice('QR uploaded. Save the rail to publish it.')
+  }
 
   const load = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -115,6 +182,7 @@ export default function PaymentMethodsPage() {
       instructions: draft.instructions!.trim(),
       account_holder: draft.account_holder?.trim() || null,
       account_reference: draft.account_reference!.trim(),
+      qr_code_path: draft.qr_code_path || null,
       rate_per_usd: draft.rate_per_usd ?? null,
       rate_updated_at: draft.rate_per_usd != null ? new Date().toISOString() : null,
       min_amount_usd: draft.min_amount_usd ?? null,
@@ -290,14 +358,70 @@ export default function PaymentMethodsPage() {
               </Field>
             </div>
 
-            <div style={{ marginTop: '1rem' }}>
-              <Field label="Instructions the client reads" hint="Be literal. This is the only thing telling them what to do.">
-                <textarea
-                  style={{ ...input, minHeight: 80, resize: 'vertical' }}
-                  value={draft.instructions || ''}
-                  onChange={e => setDraft({ ...draft, instructions: e.target.value })}
+            {/* ── QR CODE ─────────────────────────────────────────────────
+                Same click-the-placeholder pattern as /admin/catalog/upload.
+                Optional by design: the copyable UPI ID or Pay ID is what most
+                clients will actually use, because they are paying on the same
+                phone that would otherwise have to display the QR. */}
+            <div style={{ marginTop: '1.25rem', display: 'flex', gap: '1.25rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: '.55rem', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--cream-dim)', marginBottom: '.35rem' }}>
+                  QR code
+                </div>
+                <label
+                  htmlFor="qr-input"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 150, height: 150, cursor: qrBusy ? 'wait' : 'pointer',
+                    border: `1px dashed ${qrPreview ? 'var(--border)' : 'rgba(201,169,110,.4)'}`,
+                    background: qrPreview ? '#fff' : 'var(--dark2, #0f0d0a)',
+                    borderRadius: 6, overflow: 'hidden',
+                  }}
+                >
+                  {qrBusy ? (
+                    <span style={{ fontSize: '.6rem', color: 'var(--cream-muted)' }}>Uploading…</span>
+                  ) : qrPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={qrPreview} alt="Payment QR" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }} />
+                  ) : (
+                    <span style={{ fontSize: '.6rem', color: 'rgba(201,169,110,.55)', textAlign: 'center', lineHeight: 1.6, padding: '0 .75rem' }}>
+                      ＋<br />Click to upload<br />
+                      <span style={{ fontSize: '.52rem', color: 'var(--cream-dim)' }}>PNG · JPG · HEIC</span>
+                    </span>
+                  )}
+                </label>
+                <input
+                  id="qr-input"
+                  type="file"
+                  accept={QR_ACCEPT}
+                  disabled={qrBusy}
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    // Reset so re-picking the same file still fires onChange.
+                    e.target.value = ''
+                    if (f) uploadQr(f)
+                  }}
+                  style={{ display: 'none' }}
                 />
-              </Field>
+                {draft.qr_code_path && !qrBusy && (
+                  <button
+                    onClick={() => setDraft({ ...draft, qr_code_path: null })}
+                    style={{ ...btnTiny, marginTop: '.5rem', color: '#ef4444', borderColor: 'rgba(239,68,68,.3)' }}
+                  >
+                    Remove QR
+                  </button>
+                )}
+              </div>
+
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <Field label="Instructions the client reads" hint="Be literal. This is the only thing telling them what to do.">
+                  <textarea
+                    style={{ ...input, minHeight: 110, resize: 'vertical' }}
+                    value={draft.instructions || ''}
+                    onChange={e => setDraft({ ...draft, instructions: e.target.value })}
+                  />
+                </Field>
+              </div>
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginTop: '1rem', fontSize: '.75rem', color: 'var(--cream-muted)', cursor: 'pointer' }}>

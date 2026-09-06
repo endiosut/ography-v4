@@ -47,6 +47,16 @@ type Proof = {
 
 const gold = '#c9a96e', cream = '#e8d5b7', ink = '#0a0906', panel = '#0f0d0a';
 
+// What a client can send as evidence. Screenshots come off phones, so HEIC and
+// HEIF are named explicitly rather than relying on `image/*` — several in-app
+// browsers (Instagram, WhatsApp) will not match HEIC against the wildcard and
+// grey out the file the client is trying to attach.
+const PROOF_ACCEPT = [
+  'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
+  'image/*', 'application/pdf',
+].join(',');
+const PROOF_MAX_BYTES = 10 * 1024 * 1024;
+
 const METHOD_LABEL: Record<string, string> = {
   upi: 'UPI', mobile_money: 'Mobile money', bank_transfer: 'Bank transfer',
   crypto: 'Crypto', cash: 'Cash', other: 'Other',
@@ -270,14 +280,19 @@ export default function PayPage() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [paymentId]);
 
-  // QR lives in the private catalog-images bucket path recorded on the method.
+  // QR lives in `payment-qr` — public to read, admin-only to write.
+  //
+  // It used to be read from `catalog-images`, which grants INSERT/UPDATE/DELETE
+  // to `public`. Any anonymous visitor could have overwritten a payment QR
+  // there with their own wallet's code, and every subsequent payment would have
+  // gone to them with nothing on this page looking wrong.
   useEffect(() => {
     const m = methods.find(x => x.id === chosen);
     if (!m?.qr_code_path) { setQrUrl(null); return; }
     (async () => {
       try {
         const sb = getSupabase();
-        const { data } = await sb.storage.from('catalog-images').getPublicUrl(m.qr_code_path!);
+        const { data } = await sb.storage.from('payment-qr').getPublicUrl(m.qr_code_path!);
         setQrUrl(data?.publicUrl ?? null);
       } catch (e) { console.error('[pay] qr url:', e); setQrUrl(null); }
     })();
@@ -671,13 +686,34 @@ export default function PayPage() {
                   padding: '1rem', textAlign: 'center', cursor: 'pointer', marginBottom: '1rem',
                   fontSize: '.7rem', color: file ? '#f0e8d8' : 'rgba(232,213,183,.35)',
                 }}>
+                  {/* HEIC/HEIF are named explicitly: iPhones shoot HEIC by
+                      default and some in-app browsers do NOT match those files
+                      against a bare `image/*`, so the picker would grey out the
+                      exact screenshot most clients are trying to send. */}
                   <input
                     type="file"
-                    accept="image/*,application/pdf"
-                    onChange={e => { setFile(e.target.files?.[0] ?? null); setError(null); }}
+                    accept={PROOF_ACCEPT}
+                    onChange={e => {
+                      const f = e.target.files?.[0] ?? null;
+                      // Rejected at pick time rather than after an upload that
+                      // fails at the storage layer with an opaque message.
+                      if (f && f.size > PROOF_MAX_BYTES) {
+                        setError(`That file is ${(f.size / 1024 / 1024).toFixed(1)}MB — please keep it under 10MB.`);
+                        e.target.value = '';
+                        setFile(null);
+                        return;
+                      }
+                      setFile(f);
+                      setError(null);
+                    }}
                     style={{ display: 'none' }}
                   />
-                  {file ? `📎 ${file.name}` : 'Attach a screenshot or receipt (optional)'}
+                  {file
+                    ? `📎 ${file.name} · ${(file.size / 1024).toFixed(0)}KB`
+                    : 'Attach a screenshot or receipt (optional)'}
+                  <span style={{ display: 'block', fontSize: '.58rem', color: 'rgba(232,213,183,.25)', marginTop: '.35rem' }}>
+                    PNG · JPG · HEIC · WEBP · PDF — up to 10MB
+                  </span>
                 </label>
 
                 {error && (
