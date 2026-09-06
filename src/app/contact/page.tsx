@@ -21,7 +21,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 //  - Message: optional, min 10 chars if filled
 //  - Source: dropdown
 //  - Services: multi-select
-//  - Pay Now: appears when cart has Stripe-linked items
+//  Payment is NOT collected here. Submitting creates a priced agreement; the
+//  client signs it and settles on /portal/pay, choosing their own rail.
 // ─────────────────────────────────────────────────────────────────
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -47,7 +48,7 @@ const COUNTRY_PREFIXES = [
 
 const SERVICES = [
   { id: 'echo', name: 'Echo Launch Kit', price: '$180', desc: 'Visual starter identity', stripe_link: '' },
-  { id: 'amplification', name: 'Brand Amplification', price: '$555', desc: 'Full creative framework', stripe_link: 'https://buy.stripe.com/test_amplification' },
+  { id: 'amplification', name: 'Brand Amplification', price: '$555', desc: 'Full creative framework', stripe_link: '' },
   { id: 'ugc', name: 'UGC Asset Kit', price: '$145', desc: 'Branded content templates', stripe_link: '' },
   { id: 'event-banner', name: 'Event Pull-Up Banner', price: 'From $85', desc: 'Design + print + delivery', stripe_link: '' },
   { id: 'event-kit', name: 'Event Identity Kit', price: 'From $320', desc: 'Full event visual system', stripe_link: '' },
@@ -254,7 +255,6 @@ function ContactPageInner() {
 
   const selectedItems = SERVICE_OPTIONS.filter(s => selectedServices.includes(s.id));
   const selectedNames = selectedItems.map(s => s.name).join(', ');
-  const payableItems = selectedItems.filter(s => s.stripe_link);
 
   const submit = async () => {
     if (!form.name || !form.email) return;
@@ -523,24 +523,13 @@ function ContactPageInner() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
-              {/* Pay Now button — only if selected services have Stripe links */}
-              {payableItems.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '.6rem', color: 'rgba(201,169,110,.45)', marginBottom: '.5rem', letterSpacing: '.08em' }}>
-                    {payableItems.length} of your selected service{payableItems.length > 1 ? 's' : ''} can be paid upfront
-                  </div>
-                  {payableItems.map(item => (
-                    <a key={item.id} href={item.stripe_link} target="_blank" rel="noopener noreferrer"
-                      style={{ display: 'block', textAlign: 'center', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.3)', color: '#c9a96e', padding: '.75rem', fontSize: '.62rem', letterSpacing: '.12em', textTransform: 'uppercase', textDecoration: 'none', marginBottom: '.4rem', borderRadius: 3 }}>
-                      Pay Now — {item.name} ({item.price}) →
-                    </a>
-                  ))}
-                  <div style={{ fontSize: '.58rem', color: 'rgba(232,213,183,.2)', marginBottom: '.75rem' }}>
-                    You can pay now and still submit the request below, or skip payment for now.
-                  </div>
-                </div>
-              )}
-
+              {/* Removed 06 Sep 2026: a "Pay Now" block gated on
+                  item.stripe_link. Two reasons it had to go — catalog_items has
+                  no stripe_link column, so the live path was always empty; and
+                  the static fallback carried
+                  'https://buy.stripe.com/test_amplification', a TEST-mode URL
+                  that would have taken a real customer to a dead Stripe page.
+                  Payment now happens after the agreement, on /portal/pay. */}
               <button onClick={submit} disabled={submitting} style={{ ...btnStyle, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>
                 {submitting ? 'Sending...' : 'Send My Request →'}
               </button>

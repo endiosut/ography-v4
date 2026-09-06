@@ -235,8 +235,13 @@ export default function PortalPage() {
   const deliverablesFor = (projectId: string) =>
     deliverables.filter(d => d.project_id === projectId);
 
-  const paymentFor = (projectId: string) =>
-    payments.find(p => p.project_id === projectId) || null;
+  // Prefer the payment that still needs action. `payments` is ordered newest
+  // first, so a plain find() would surface a settled deposit and hide an
+  // outstanding balance behind it once a project has both.
+  const paymentFor = (projectId: string) => {
+    const mine = payments.filter(p => p.project_id === projectId);
+    return mine.find(p => p.status !== 'paid') || mine[0] || null;
+  };
 
   const money = (n?: number | null) =>
     n == null ? null : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -521,6 +526,25 @@ export default function PortalPage() {
                             <a href={payment.receipt_url} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(201,169,110,.6)', fontSize: '.58rem', textDecoration: 'none', letterSpacing: '.08em' }}>
                               Receipt ↗
                             </a>
+                          )}
+
+                          {/* The portal showed the amount owed but gave no way
+                              to pay it — /portal/pay was linked from nowhere in
+                              the whole app. A client who closes the tab after
+                              signing lands here, and this is the only route
+                              back to settling. */}
+                          {payment && payment.status !== 'paid' && (
+                            <Link
+                              href={`/portal/pay/${payment.id}`}
+                              style={{
+                                marginLeft: 'auto', background: '#c9a96e', color: '#0a0906',
+                                textDecoration: 'none', padding: '.45rem 1.1rem', borderRadius: 4,
+                                fontSize: '.58rem', letterSpacing: '.12em', textTransform: 'uppercase',
+                                fontWeight: 600,
+                              }}
+                            >
+                              Pay {money(payment.amount_usd) || 'now'} →
+                            </Link>
                           )}
                         </div>
                       )}

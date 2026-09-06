@@ -382,22 +382,10 @@ export default function CatalogPage() {
                     >
                       Request →
                     </Link>
-                    {item.stripe_link && (
-                      <Link
-                        href={item.stripe_link}
-                        target="_blank"
-                        style={{
-                          flex: 1, textAlign: 'center', padding: '.55rem .6rem',
-                          background: 'rgba(201,169,110,.06)',
-                          border: '1px solid rgba(201,169,110,.2)',
-                          color: '#c9a96e', fontFamily: 'Montserrat, sans-serif',
-                          fontSize: '.54rem', letterSpacing: '.1em', textTransform: 'uppercase',
-                          textDecoration: 'none', borderRadius: 3, transition: 'all .2s',
-                        }}
-                      >
-                        Pay Now →
-                      </Link>
-                    )}
+                    {/* Removed 06 Sep 2026: a "Pay Now" link gated on
+                        item.stripe_link. catalog_items has no stripe_link
+                        column, so this never rendered once — and payment now
+                        happens after the agreement, on /portal/pay. */}
                   </div>
                 </div>
               </div>
