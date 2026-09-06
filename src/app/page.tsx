@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import NavBar from '@/components/NavBar';
@@ -37,79 +37,90 @@ const formatPrice = (priceNote?: string | null, basePrice?: number | string | nu
   return 'Contact for pricing';
 };
 
-// Trimmed 13 Aug 2026. Three typed lines at 45ms/char with 1200ms holds put a
-// ~9.4s gate in front of the homepage before a first-time visitor saw anything.
-// Line 2 ("Your story is your most undervalued asset") also restated the hero
-// — "They buy your story" — so it was paying 1.8s to say the same thing twice.
-// Two lines, faster cadence, shorter holds: ~4.8s.
-const INTRO_LINES = [
-  'Every great brand begins with a truth.',
-  'We turn lived experience into market authority.',
-];
+// Rewritten 06 Sep 2026. Replaced the two prose lines with the three outcome
+// phrases the rest of the page is already built on ("01 / Build Trust",
+// "02 / Capture Attention", "03 / Scale Presence" in the Outcomes section) so
+// the intro previews the page instead of saying something the page never
+// repeats. Phrases STACK rather than replace — a triad only reads as a triad if
+// the visitor can see all three at once — and resolve on "Market authority.",
+// the one clause kept from the old copy.
+//
+// Timing is a reveal cadence, not a typewriter: at 32ms/char these three would
+// have taken ~1.4s of keystrokes alone before any hold. Total budget below is
+// 250 + 3x1050 + 900 (kicker) + 900 (hold) = 4.45s, then an 800ms fade.
+const INTRO_LINES = ['Build Trust', 'Capture Attention', 'Scale Presence'];
+const INTRO_KICKER = 'Market authority.';
+
+const INTRO_START_MS = 250;   // beat before the first phrase
+const INTRO_STEP_MS = 1050;   // gap between phrases
+const INTRO_KICKER_MS = 900;  // gap before the resolving line
+const INTRO_HOLD_MS = 900;    // read time once everything is up
+
+// Bumped from 'og_intro_seen' so returning visitors who already sat through the
+// old two-line intro this session still see the new one.
+const INTRO_SEEN_KEY = 'og_intro_seen_v2';
 
 export default function HomePage() {
   const [featured, setFeatured] = useState<CatalogItem[]>([]);
   const [added, setAdded] = useState<string | null>(null);
   const [showIntro, setShowIntro] = useState(false);
   const [introFading, setIntroFading] = useState(false);
-  const [typedText, setTypedText] = useState('');
+  // How many intro beats have landed. 0 = nothing, 1..3 = phrases,
+  // 4 = the "Market authority." resolve.
+  const [introStep, setIntroStep] = useState(0);
 
   const { addToCart } = useCart();
 
-  // Intro typewriter animation (shows on first visit in session)
-  useEffect(() => {
+  const dismissIntro = useCallback(() => {
     try {
-      const seen = sessionStorage.getItem('og_intro_seen');
-      if (!seen) {
-        setShowIntro(true);
-        let lineIdx = 0;
-        let charIdx = 0;
-        let currentText = '';
-        let timeoutId: NodeJS.Timeout;
-
-        const typeChar = () => {
-          const targetLine = INTRO_LINES[lineIdx];
-          if (charIdx < targetLine.length) {
-            currentText += targetLine[charIdx];
-            setTypedText(currentText);
-            charIdx++;
-            timeoutId = setTimeout(typeChar, 32);
-          } else {
-            timeoutId = setTimeout(() => {
-              lineIdx++;
-              if (lineIdx < INTRO_LINES.length) {
-                charIdx = 0;
-                currentText = '';
-                setTypedText('');
-                timeoutId = setTimeout(typeChar, 300);
-              } else {
-                // finished all lines
-                timeoutId = setTimeout(() => {
-                  dismissIntro();
-                }, 800);
-              }
-            }, 900);
-          }
-        };
-
-        timeoutId = setTimeout(typeChar, 250);
-
-        return () => clearTimeout(timeoutId);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const dismissIntro = () => {
-    try {
-      sessionStorage.setItem('og_intro_seen', 'true');
+      sessionStorage.setItem(INTRO_SEEN_KEY, 'true');
     } catch {
       // ignore
     }
     setIntroFading(true);
     setTimeout(() => setShowIntro(false), 800);
-  };
+  }, []);
+
+  // Intro reveal (shows on first visit in session).
+  //
+  // The old version chained setTimeout inside setTimeout and returned only the
+  // handle that happened to be live at cleanup time, so unmounting mid-intro
+  // left the rest of the chain running and calling setState on a dead tree.
+  // Every timer is scheduled up front here and every one is cleared.
+  useEffect(() => {
+    let seen = true;
+    try {
+      seen = Boolean(sessionStorage.getItem(INTRO_SEEN_KEY));
+    } catch {
+      // Private mode / storage blocked: skip the intro rather than replay it
+      // on every navigation.
+    }
+    if (seen) return;
+
+    setShowIntro(true);
+
+    // Honour the OS "reduce motion" setting: show the finished frame, hold, go.
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    if (reduceMotion) {
+      setIntroStep(INTRO_LINES.length + 1);
+      const t = setTimeout(dismissIntro, 1600);
+      return () => clearTimeout(t);
+    }
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    INTRO_LINES.forEach((_, i) => {
+      timers.push(setTimeout(() => setIntroStep(i + 1), INTRO_START_MS + i * INTRO_STEP_MS));
+    });
+
+    const kickerAt = INTRO_START_MS + INTRO_LINES.length * INTRO_STEP_MS + INTRO_KICKER_MS;
+    timers.push(setTimeout(() => setIntroStep(INTRO_LINES.length + 1), kickerAt));
+    timers.push(setTimeout(dismissIntro, kickerAt + INTRO_HOLD_MS));
+
+    return () => timers.forEach(clearTimeout);
+  }, [dismissIntro]);
 
   // Featured services fetch
   useEffect(() => {
@@ -168,16 +179,34 @@ export default function HomePage() {
           opacity: introFading ? 0 : 1,
           pointerEvents: introFading ? 'none' : 'auto',
         }}>
-          <div style={{
-            fontFamily: 'Cormorant Garamond, serif', fontSize: 'clamp(1.8rem, 4vw, 3.2rem)',
-            color: '#f0e8d8', fontWeight: 300, textAlign: 'center', maxWidth: 800, minHeight: '5rem',
-            lineHeight: 1.3, letterSpacing: '.02em',
-          }}>
-            {typedText}
-            <span style={{
-              display: 'inline-block', width: 3, height: '1.8rem', background: '#c9a96e',
-              marginLeft: 6, verticalAlign: 'middle', animation: 'blink 1s infinite',
-            }} />
+          <div style={{ textAlign: 'center', maxWidth: 800 }}>
+            {INTRO_LINES.map((line, i) => (
+              <div
+                key={line}
+                style={{
+                  fontFamily: 'Cormorant Garamond, serif',
+                  fontSize: 'clamp(1.8rem, 4vw, 3.2rem)',
+                  color: '#f0e8d8', fontWeight: 300, lineHeight: 1.35, letterSpacing: '.02em',
+                  opacity: introStep > i ? 1 : 0,
+                  transform: introStep > i ? 'translateY(0)' : 'translateY(14px)',
+                  transition: 'opacity .7s ease, transform .7s cubic-bezier(.16,1,.3,1)',
+                }}
+              >
+                {line}
+              </div>
+            ))}
+            <div
+              style={{
+                fontFamily: 'Cormorant Garamond, serif', fontStyle: 'italic',
+                fontSize: 'clamp(1rem, 2vw, 1.5rem)', color: '#c9a96e', fontWeight: 300,
+                marginTop: '1.6rem', letterSpacing: '.04em',
+                opacity: introStep > INTRO_LINES.length ? 1 : 0,
+                transform: introStep > INTRO_LINES.length ? 'translateY(0)' : 'translateY(10px)',
+                transition: 'opacity .7s ease, transform .7s cubic-bezier(.16,1,.3,1)',
+              }}
+            >
+              {INTRO_KICKER}
+            </div>
           </div>
           <button
             onClick={dismissIntro}
@@ -189,9 +218,6 @@ export default function HomePage() {
           >
             [ Skip Experience ]
           </button>
-          <style>{`
-            @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-          `}</style>
         </div>
       )}
 

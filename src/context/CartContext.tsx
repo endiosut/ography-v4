@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import Link from 'next/link';
 
 // ─────────────────────────────────────────────────────────────────
@@ -39,6 +39,10 @@ type CartContextType = {
   clearCart: () => void;
   setQuantity: (id: string, quantity: number) => void;
   setCartOpen: (open: boolean) => void;
+  /** Stop the 5s auto-close. The checkout form lives inside the sidebar, and a
+   *  panel that closes itself while someone is typing their email cannot take
+   *  a payment. */
+  cancelAutoClose: () => void;
 };
 
 // Parse a price for ARITHMETIC. The old implementation was
@@ -100,23 +104,39 @@ export function CartProvider({ children }: { children: ReactNode }) {
       console.error('[cart] persist failed:', e);
     }
   }, [cart, hydrated]);
-  const [autoCloseTimer, setAutoCloseTimer] = useState<NodeJS.Timeout | null>(null);
+  // Held in a ref, not state: openCartWithAutoClose depended on the timer state
+  // it also set, so every add-to-cart produced a new callback identity and the
+  // previous timer was read stale. A ref is the same value everywhere.
+  const autoCloseRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollHandlerRef = useRef<(() => void) | null>(null);
+
+  const cancelAutoClose = useCallback(() => {
+    if (autoCloseRef.current) {
+      clearTimeout(autoCloseRef.current);
+      autoCloseRef.current = null;
+    }
+    if (scrollHandlerRef.current) {
+      window.removeEventListener('scroll', scrollHandlerRef.current);
+      scrollHandlerRef.current = null;
+    }
+  }, []);
 
   // Auto-close cart after 5 seconds + close on scroll
   const openCartWithAutoClose = useCallback(() => {
     setCartOpen(true);
-    if (autoCloseTimer) clearTimeout(autoCloseTimer);
-    const timer = setTimeout(() => setCartOpen(false), 5000);
-    setAutoCloseTimer(timer);
+    cancelAutoClose();
 
-    // Close on scroll
+    autoCloseRef.current = setTimeout(() => setCartOpen(false), 5000);
+
     const onScroll = () => {
       setCartOpen(false);
-      clearTimeout(timer);
-      window.removeEventListener('scroll', onScroll);
+      cancelAutoClose();
     };
+    scrollHandlerRef.current = onScroll;
     window.addEventListener('scroll', onScroll, { once: true, passive: true });
-  }, [autoCloseTimer]);
+  }, [cancelAutoClose]);
+
+  useEffect(() => cancelAutoClose, [cancelAutoClose]);
 
   // Adding an item already in the cart previously did `{ ...c }` — a copy with
   // no change. Quantity controls therefore had nothing to control, and adding
@@ -151,7 +171,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const cartTotal = cart.reduce((sum, i) => sum + priceToNumber(i) * (i.quantity ?? 1), 0);
 
   return (
-    <CartContext.Provider value={{ cart, cartCount, cartTotal, cartOpen, addToCart, removeFromCart, setQuantity, clearCart, setCartOpen }}>
+    <CartContext.Provider value={{ cart, cartCount, cartTotal, cartOpen, addToCart, removeFromCart, setQuantity, clearCart, setCartOpen, cancelAutoClose }}>
       {children}
     </CartContext.Provider>
   );
@@ -196,16 +216,65 @@ export function CartIcon() {
 
 // ── Cart Sidebar — use in layout or any page ──
 export function CartSidebar() {
-  const { cart, cartCount, cartTotal, cartOpen, setCartOpen, removeFromCart } = useCart();
+  const { cart, cartCount, cartTotal, cartOpen, setCartOpen, removeFromCart, cancelAutoClose } = useCart();
 
-  const hasStripe = cart.some(i => i.stripe_link);
-  const allHaveStripe = cart.length > 0 && cart.every(i => i.stripe_link);
+  // Checkout state. `payOpen` reveals the two fields Stripe needs before a
+  // session can be created; nothing else is collected here because Stripe's own
+  // page collects the card.
+  const [payOpen, setPayOpen] = useState(false);
+  const [payName, setPayName] = useState('');
+  const [payEmail, setPayEmail] = useState('');
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
 
   const handleRequestAll = () => {
     const services = cart.map(i => i.name).join(',');
-    sessionStorage.setItem('og_contact_services', services);
+    try { sessionStorage.setItem('og_contact_services', services); } catch { /* ignore */ }
     window.location.href = `/contact?services=${encodeURIComponent(services)}`;
   };
+
+  const openPay = () => {
+    cancelAutoClose();      // otherwise the panel closes mid-typing
+    setPayError(null);
+    setPayOpen(true);
+  };
+
+  // Only ids and quantities go up. The server re-reads every price from
+  // catalog_items — a price posted from the browser is a browser-written invoice.
+  const startCheckout = async (intent: 'full' | 'deposit') => {
+    setPayBusy(true);
+    setPayError(null);
+    try {
+      const r = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: payName.trim(),
+          email: payEmail.trim(),
+          intent,
+          items: cart.map(i => ({ id: i.id, quantity: i.quantity ?? 1 })),
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.url) {
+        // 409 = the cart cannot be charged as-is (mixed retainer + one-time).
+        // 503 = Stripe keys not set. Both carry a message worth showing.
+        setPayError(data.error || 'Could not start checkout.');
+        setPayBusy(false);
+        return;
+      }
+      window.location.href = data.url;
+    } catch (e) {
+      console.error('[cart] checkout failed:', e);
+      setPayError('Could not reach the payment service. Please try again.');
+      setPayBusy(false);
+    }
+  };
+
+  const canSubmit =
+    payName.trim().length > 1 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(payEmail.trim()) &&
+    !payBusy;
 
   if (!cartOpen) return null;
 
@@ -262,11 +331,10 @@ export function CartSidebar() {
                   <div style={{ fontSize: '.76rem', color: '#e8d5b7', marginBottom: '.25rem', lineHeight: 1.3 }}>{item.name}</div>
                   <div style={{ fontSize: '.78rem', color: '#c9a96e', fontFamily: 'Cormorant Garamond, serif', marginBottom: '.2rem' }}>{formatPrice(item.price)}</div>
                   {item.turnaround && <div style={{ fontSize: '.58rem', color: 'rgba(240,232,216,.25)' }}>{item.turnaround}</div>}
-                  {item.stripe_link && (
-                    <Link href={item.stripe_link} target="_blank" style={{ fontSize: '.55rem', color: 'rgba(201,169,110,.4)', textDecoration: 'none', display: 'block', marginTop: '.35rem' }}>
-                      Pay directly →
-                    </Link>
-                  )}
+                  {/* Removed 06 Sep 2026: a per-item "Pay directly" link gated on
+                      item.stripe_link. catalog_items has no stripe_link column,
+                      so the value was always undefined and the link never once
+                      rendered. Payment now goes through /api/checkout. */}
                 </div>
                 <button onClick={() => removeFromCart(item.id)} style={{ background: 'none', border: 'none', color: 'rgba(240,232,216,.2)', cursor: 'pointer', fontSize: '1rem', padding: '.2rem', flexShrink: 0 }}>✕</button>
               </div>
@@ -282,26 +350,74 @@ export function CartSidebar() {
               <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', color: '#c9a96e' }}>${cartTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
             </div>
 
-            {allHaveStripe ? (
+            {!payOpen ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-                <button onClick={handleRequestAll} style={primaryBtn}>Pay Upfront — Full Amount</button>
-                <button onClick={handleRequestAll} style={secondaryBtn}>Pay 50% Now → 50% at Delivery</button>
-              </div>
-            ) : hasStripe ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-                <button onClick={handleRequestAll} style={primaryBtn}>Request Services →</button>
-                <div style={{ fontSize: '.55rem', color: 'rgba(240,232,216,.2)', textAlign: 'center', lineHeight: 1.6 }}>
-                  Payment links sent separately for applicable services
-                </div>
+                <button onClick={openPay} style={primaryBtn}>Checkout &amp; Pay →</button>
+                <button onClick={handleRequestAll} style={secondaryBtn}>Request a Quote Instead</button>
               </div>
             ) : (
-              <button onClick={handleRequestAll} style={{ ...primaryBtn, width: '100%' }}>
-                Request These Services →
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
+                <input
+                  value={payName}
+                  onChange={e => setPayName(e.target.value)}
+                  onFocus={cancelAutoClose}
+                  placeholder="Your name"
+                  autoComplete="name"
+                  style={payField}
+                />
+                <input
+                  value={payEmail}
+                  onChange={e => setPayEmail(e.target.value)}
+                  onFocus={cancelAutoClose}
+                  placeholder="Email for the receipt"
+                  type="email"
+                  autoComplete="email"
+                  style={payField}
+                />
+
+                {payError && (
+                  <div style={{
+                    fontSize: '.6rem', color: '#e0a0a0', lineHeight: 1.6,
+                    background: 'rgba(180,80,80,.08)', border: '1px solid rgba(180,80,80,.2)',
+                    padding: '.6rem .7rem',
+                  }}>
+                    {payError}
+                    <button
+                      onClick={handleRequestAll}
+                      style={{
+                        display: 'block', marginTop: '.5rem', background: 'none', border: 'none',
+                        padding: 0, color: '#c9a96e', fontSize: '.58rem', cursor: 'pointer',
+                        textDecoration: 'underline', fontFamily: 'Montserrat, sans-serif',
+                      }}
+                    >
+                      Request a quote instead →
+                    </button>
+                  </div>
+                )}
+
+                {/* Both intents are offered; the server downgrades "full" to a
+                    deposit for any "From $X" line rather than charging a total
+                    nobody has agreed to yet. */}
+                <button
+                  onClick={() => startCheckout('full')}
+                  disabled={!canSubmit}
+                  style={{ ...primaryBtn, opacity: canSubmit ? 1 : .4, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+                >
+                  {payBusy ? 'Starting…' : 'Pay Full Amount'}
+                </button>
+                <button
+                  onClick={() => startCheckout('deposit')}
+                  disabled={!canSubmit}
+                  style={{ ...secondaryBtn, opacity: canSubmit ? 1 : .4, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+                >
+                  {payBusy ? 'Starting…' : 'Pay 50% Deposit'}
+                </button>
+              </div>
             )}
 
-            <div style={{ marginTop: '.75rem', fontSize: '.52rem', color: 'rgba(240,232,216,.18)', textAlign: 'center', letterSpacing: '.06em' }}>
-              50% on submission · 50% at delivery · USD
+            <div style={{ marginTop: '.75rem', fontSize: '.52rem', color: 'rgba(240,232,216,.18)', textAlign: 'center', letterSpacing: '.06em', lineHeight: 1.7 }}>
+              50% on submission · 50% at delivery · USD<br />
+              Card payment is handled by Stripe
             </div>
           </div>
         )}
@@ -321,6 +437,12 @@ const primaryBtn: React.CSSProperties = {
   width: '100%', background: '#c9a96e', color: '#0a0906', border: 'none',
   padding: '.85rem', fontSize: '.62rem', letterSpacing: '.14em', textTransform: 'uppercase',
   cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', fontWeight: 500,
+};
+
+const payField: React.CSSProperties = {
+  width: '100%', background: '#0f0d0a', color: '#e8d5b7',
+  border: '1px solid rgba(201,169,110,.2)', padding: '.7rem .8rem',
+  fontSize: '.7rem', fontFamily: 'Montserrat, sans-serif', outline: 'none',
 };
 
 const secondaryBtn: React.CSSProperties = {
