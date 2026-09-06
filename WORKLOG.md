@@ -8,6 +8,78 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-07 (b) · Claude Opus 5 · Deploy unblocked — MY misdiagnosis, corrected
+
+```
+ITEM        Get the stalled deployment out. Verify everything on the shipped
+            build. Set the UPI rate from a live source.
+
+CORRECTION  ** I GOT THE DIAGNOSIS WRONG AND SENT THE OWNER TO FIX SOMETHING
+            THAT WAS NOT BROKEN. ** I concluded Vercel had lost GitHub repo
+            access when the repo went private, and had them re-grant the
+            GitHub App permission. get_git_deployment_context shows the project
+            was linked to endiosut/ography-v4 the entire time.
+
+ROOT CAUSE  vercel.json carried an HOURLY cron ("0 * * * *"). This team is on
+            the Hobby plan, which permits at most 2 cron jobs and only ONCE PER
+            DAY. Vercel rejects an invalid cron at config validation and
+            creates NO deployment record at all — which is precisely why the
+            deploy hook kept returning 201 with a job id while list_deployments
+            stayed empty, and why there was never a failed build to open.
+
+            The signal I had and misread: deploys stopped at the exact commit
+            that introduced the cron (85e598a). The commit before it (59d6785)
+            deployed fine and I had personally verified its routes live in
+            production. The repo going private was a COINCIDENCE in the same
+            window, and I let it explain the evidence instead of the timeline.
+
+CHANGE      vercel.json — both crons daily ("15 3 * * *", "0 6 * * *").
+            Cheap: the outbox already drains opportunistically in-process after
+            every enqueue, so the schedule is a retry safety net, not the
+            delivery path. /api/outbox/drain still accepts ?key=CRON_SECRET so
+            an external pinger can run it more often if ever needed.
+
+STATUS      verified-deployed — d04daa4 went live 45 seconds after push.
+
+VERIFY      Routes on the SHIPPED build, unauthenticated — none 404:
+              outbox/drain 401 · drain?key=wrong 401 · refresh-rates 401
+              issue-link 401 · proofs/review 401 · extend 400
+              agreements/accepted 400 · home 200
+
+            Anonymous attacker holding the public anon key:
+              upload -> catalog-images / payment-qr / deliverables /
+                        brief-files / payment-proofs
+                403 "new row violates row-level security policy"
+              insert briefs 401 · insert notifications 401
+              read payment_methods 200 (storefront intact)
+
+            TWO PROBES WERE INITIALLY WORTHLESS AND WERE REDONE:
+              · payment-proofs upload first returned a MIME-type error, which
+                is raised BEFORE RLS is evaluated. Redone with
+                Content-Type: image/png to get a real answer.
+              · reading notifications as anon returned [] while the table was
+                EMPTY, which proves nothing. A real admin-audience row was
+                inserted via the service role first; the anon read still
+                returned []. Probe deleted, notifications back to 0.
+
+RATE SET    1 USD = 94.511608 INR (exchangerate-api), corroborated by
+            Frankfurter/ECB at 94.49 — 0.02% apart. Applied by hand this once
+            because refresh-rates needs CRON_SECRET or an admin session and
+            neither is configured yet; the daily job takes over after that.
+
+OPEN        · env vars unset: RESEND_API_KEY, RESEND_FROM, CRON_SECRET,
+              NEXT_PUBLIC_SITE_URL, PAYMENT_WINDOW_MINUTES. Until then the
+              outbox marks receipts 'skipped' rather than pretending they sent.
+            · no QR image on either rail
+            · 8 stalled payments KEPT as test records, by instruction
+
+COMMIT      d04daa4
+DEPLOY      live, 45s after push
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-07 · Claude Opus 5 · Notification centre, live FX — DEPLOY STILL BROKEN
 
 ```
