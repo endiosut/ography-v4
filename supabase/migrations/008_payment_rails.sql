@@ -3,8 +3,26 @@
 -- them, pays out of band, submits proof, and an admin approves.
 --
 -- ####################################################################
--- ##  NOT APPLIED. Requires explicit written approval per AGENTS.md  ##
--- ##  rule 4 before anything here touches unzwefrtgsgmtljlbavf.      ##
+-- ##  APPLIED 06 Sep 2026 with the owner's approval, as four        ##
+-- ##  migrations against unzwefrtgsgmtljlbavf:                      ##
+-- ##    008a_payments_admin_write_policy                            ##
+-- ##    008b_payment_proofs_resubmission                            ##
+-- ##    008c_payment_rails_crypto_and_fx                            ##
+-- ##    008d_seed_payment_rails                                     ##
+-- ##                                                                ##
+-- ##  Section 8 (voiding the 8 stalled payments) was NOT applied —  ##
+-- ##  it changes live rows and was never approved. Still open.      ##
+-- ##                                                                ##
+-- ##  Verified after apply, by re-querying the properties           ##
+-- ##  themselves rather than trusting the success responses:        ##
+-- ##    payments ALL-policy count ......... 1                       ##
+-- ##    payment_proofs.file_path nullable . YES                     ##
+-- ##    payment_proofs_payment_id_key ..... 0 (dropped)             ##
+-- ##    partial unique index ............... 1                      ##
+-- ##    crypto-needs-network CHECK ........ 1                       ##
+-- ##    new payment_methods columns ....... 8                       ##
+-- ##    new payments columns .............. 5                       ##
+-- ##    live rails ........................ 2 (UPI, Binance Pay)    ##
 -- ####################################################################
 --
 -- GOOD NEWS FIRST. The schema was already designed for this model:

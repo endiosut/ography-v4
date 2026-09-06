@@ -178,6 +178,15 @@ export default function AgreementPage() {
       //
       // agreements_on_accept runs inside this UPDATE's transaction, so by the
       // time it returns the payment row is committed and readable.
+      // Notify out of band. The acceptance itself is already committed, so a
+      // dead notifier must not block the client from reaching the payment
+      // screen — hence no await on the navigation path below.
+      fetch('/api/agreements/accepted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agreementId: agreement.id }),
+      }).catch(e => console.error('[agreement] notify failed:', e));
+
       const { data: proj } = await sb
         .from('projects').select('id').eq('agreement_id', agreement.id).limit(1).maybeSingle();
 

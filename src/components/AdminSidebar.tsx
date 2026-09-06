@@ -11,7 +11,8 @@ const nav = [
   { href: '/admin/catalog/upload', label: 'Add Item',   icon: '＋' },
   { href: '/admin/briefs',         label: 'Briefs',     icon: '◇' },
   { href: '/admin/payments',       label: 'Payments',   icon: '◈' },
-  { href: '/admin/payments/methods', label: 'Pay Rails', icon: '⇄' },
+  { href: '/admin/payments/proofs',  label: 'Proofs',     icon: '✓' },
+  { href: '/admin/payments/methods', label: 'Pay Rails',  icon: '⇄' },
 ]
 
 export default function AdminSidebar() {

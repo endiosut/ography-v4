@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import NavBar from '@/components/NavBar';
+import { WHATSAPP_URL, SUPPORT_EMAIL, mailtoHref } from '@/lib/support';
 
 // Payment instruction + proof submission — step 4 of the loop.
 //
@@ -32,6 +33,11 @@ type Method = {
   instructions: string; account_holder: string | null;
   account_reference: string | null; qr_code_path: string | null;
   sort_order: number;
+  // Added 06 Sep 2026 with the P2P rails.
+  network: string | null;      // crypto only — wrong chain destroys the funds
+  memo_tag: string | null;     // some exchange deposits are unattributed without it
+  asset_code: string | null;   // USDT, BTC — distinct from the fiat currency
+  rate_per_usd: number | null; // units of currency_code per 1 USD; null = ask
 };
 
 type Proof = {
@@ -58,6 +64,107 @@ function getSupabase() {
 
 const money = (n: number | null | undefined) =>
   n == null ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+/**
+ * The human escape hatch.
+ *
+ * A card checkout fails loudly and the processor handles it. A manual rail
+ * fails quietly and strands the client — an unknown FX rate, a transfer that
+ * has not landed, a rejected proof. Every one of those states needs a person,
+ * so this sits in all of them.
+ *
+ * wa.me/message/<code> is a short link and ignores ?text=, so the context line
+ * is rendered for the client to copy rather than silently dropped.
+ */
+function PayHelp({ payRef }: { payRef: string }) {
+  return (
+    <div style={{ marginTop: '.9rem', display: 'flex', gap: '.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <a
+        href={WHATSAPP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          background: 'rgba(37,211,102,.12)', border: '1px solid rgba(37,211,102,.45)',
+          color: '#25d366', textDecoration: 'none', borderRadius: 4,
+          padding: '.5rem 1rem', fontSize: '.62rem', letterSpacing: '.1em',
+          textTransform: 'uppercase', fontFamily: 'Montserrat, sans-serif',
+        }}
+      >
+        Message us on WhatsApp
+      </a>
+      <a
+        href={mailtoHref(payRef, 'Payment help')}
+        style={{
+          border: '1px solid rgba(201,169,110,.3)', color: gold, textDecoration: 'none',
+          borderRadius: 4, padding: '.5rem 1rem', fontSize: '.62rem', letterSpacing: '.1em',
+          textTransform: 'uppercase', fontFamily: 'Montserrat, sans-serif',
+        }}
+      >
+        Email
+      </a>
+      <span style={{ fontSize: '.6rem', color: 'rgba(232,213,183,.3)' }}>
+        Quote <strong style={{ color: 'rgba(232,213,183,.5)', fontFamily: 'IBM Plex Mono, monospace' }}>{payRef}</strong>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Copyable value.
+ *
+ * This is the single most important control on the page and it did not exist.
+ * A QR code is unusable to most people paying here, because they are paying on
+ * the SAME PHONE that is displaying it — there is no second device to scan
+ * with. Binance and 1xbet both solve this with copy-to-clipboard on the
+ * address plus an app deep link. Without it the client is retyping a UPI ID or
+ * a wallet address by hand, and a mistyped wallet address sends the money to
+ * a stranger.
+ */
+function CopyRow({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard is blocked on insecure origins and in some in-app browsers;
+      // selecting the text still works, so fail quietly rather than alarm.
+      console.error('[pay] clipboard unavailable');
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: '.7rem' }}>
+      <div style={{ fontSize: '.58rem', color: 'rgba(232,213,183,.32)', marginBottom: '.25rem' }}>{label}</div>
+      <div style={{ display: 'flex', gap: '.5rem', alignItems: 'stretch' }}>
+        <div style={{
+          flex: 1, minWidth: 0, color: '#f0e8d8',
+          fontFamily: mono ? 'IBM Plex Mono, monospace' : 'Montserrat, sans-serif',
+          fontSize: '.76rem', background: 'rgba(201,169,110,.06)',
+          border: '1px solid rgba(201,169,110,.18)', borderRadius: 4,
+          padding: '.55rem .7rem', overflowWrap: 'anywhere',
+        }}>
+          {value}
+        </div>
+        <button
+          onClick={copy}
+          style={{
+            flexShrink: 0, background: copied ? 'rgba(74,158,107,.15)' : 'rgba(201,169,110,.1)',
+            border: `1px solid ${copied ? 'rgba(74,158,107,.5)' : 'rgba(201,169,110,.3)'}`,
+            color: copied ? '#4a9e6b' : gold, borderRadius: 4, cursor: 'pointer',
+            padding: '0 .9rem', fontSize: '.6rem', letterSpacing: '.1em',
+            textTransform: 'uppercase', fontFamily: 'Montserrat, sans-serif',
+            WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
+          }}
+        >
+          {copied ? '✓' : 'Copy'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Countdown from payment_links.expires_at. Null expiry = no timer, not "expired".
 function useCountdown(expiresAt: string | null) {
@@ -128,10 +235,24 @@ export default function PayPage() {
         if (link?.expires_at) setExpiresAt(link.expires_at as string);
       }
 
-      const { data: existing } = await sb
-        .from('payment_proofs').select('id,review_status,submitted_at,reference_text,review_note')
-        .eq('payment_id', paymentId).maybeSingle();
-      if (existing) setProof(existing as Proof);
+      // Ordered + limit(1), NOT maybeSingle() on the bare filter.
+      //
+      // payment_proofs used to carry UNIQUE(payment_id), so exactly one row was
+      // possible and maybeSingle() was safe. Migration 008b replaced that with a
+      // partial unique on OPEN proofs, so a client whose proof was rejected can
+      // now submit a corrected one — and from that moment there are two rows.
+      // maybeSingle() throws on more than one row, so leaving it would have
+      // broken this page for precisely the clients who had already had a
+      // payment problem.
+      const { data: existing, error: proofErr } = await sb
+        .from('payment_proofs')
+        .select('id,review_status,submitted_at,reference_text,review_note')
+        .eq('payment_id', paymentId)
+        .order('submitted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (proofErr) console.error('[pay] proof read:', proofErr.message);
+      setProof((existing as Proof) ?? null);
 
       const { data: ms, error: mErr } = await sb
         .from('payment_methods').select('*').eq('is_active', true)
@@ -246,6 +367,35 @@ export default function PayPage() {
   const method = methods.find(m => m.id === chosen) || null;
   const payRef = project?.project_ref || p.id.slice(0, 8).toUpperCase();
 
+  // The amount in the currency the client will actually send.
+  // Deliberately null when the rate is unknown — never a silent 1:1.
+  const localAmount = (() => {
+    if (!method || p.amount_usd == null) return null;
+    const rate = method.rate_per_usd;
+    if (rate == null || !Number.isFinite(Number(rate))) return null;
+    const value = Number(p.amount_usd) * Number(rate);
+    const unit = method.asset_code || method.currency_code;
+    return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${unit}`;
+  })();
+
+  // upi:// opens the client's UPI app with payee and amount prefilled. `tn` is
+  // the transaction note — this is what carries the project reference, and
+  // without it a manual transfer cannot be matched.
+  // Amount is only included when the INR figure is actually known.
+  const upiHref = (() => {
+    if (!method || method.method_type !== 'upi' || !method.account_reference) return null;
+    const params = new URLSearchParams({
+      pa: method.account_reference,
+      pn: method.account_holder || 'OGraphy',
+      tn: payRef,
+      cu: method.currency_code || 'INR',
+    });
+    if (localAmount && method.rate_per_usd != null && p.amount_usd != null) {
+      params.set('am', (Number(p.amount_usd) * Number(method.rate_per_usd)).toFixed(2));
+    }
+    return `upi://pay?${params.toString()}`;
+  })();
+
   return (
     <div style={{ minHeight: '100vh', background: ink, fontFamily: 'Montserrat, sans-serif', color: cream }}>
       <NavBar user={user ? { email: user.email, full_name: user.name } : undefined} />
@@ -314,7 +464,7 @@ export default function PayPage() {
               Your project moves to the next stage. You can submit your brief from the portal.
             </div>
           </div>
-        ) : proof ? (
+        ) : proof && proof.review_status !== 'rejected' ? (
           <div style={{ border: '1px solid rgba(201,169,110,.2)', background: panel, padding: '1.5rem', borderRadius: 6 }}>
             <div style={{ fontSize: '.75rem', color: gold, marginBottom: '.5rem' }}>
               {proof.review_status === 'rejected' ? 'We could not verify this payment' : 'Submitted — under review'}
@@ -334,6 +484,28 @@ export default function PayPage() {
           </div>
         ) : (
           <>
+            {/* A rejected proof used to end the flow: the UI showed "contact
+                us" and the UNIQUE constraint made a second submission
+                impossible anyway. Now the reason is shown and the form below
+                stays open so the client can correct and resubmit. */}
+            {proof?.review_status === 'rejected' && (
+              <div style={{
+                border: '1px solid rgba(224,112,112,.35)', background: 'rgba(224,112,112,.06)',
+                borderRadius: 6, padding: '1.1rem 1.25rem', marginBottom: '1.5rem',
+              }}>
+                <div style={{ fontSize: '.75rem', color: '#e07070', marginBottom: '.45rem' }}>
+                  We could not verify your last payment
+                </div>
+                <div style={{ fontSize: '.72rem', color: 'rgba(232,213,183,.55)', lineHeight: 1.7 }}>
+                  {proof.review_note
+                    ? proof.review_note
+                    : 'The details did not match a transfer we received.'}
+                  {' '}You can submit again below — or message us and we will sort it out with you.
+                </div>
+                <PayHelp payRef={payRef} />
+              </div>
+            )}
+
             {/* ── HOW TO PAY ── */}
             <div style={{ border: '1px solid rgba(201,169,110,.12)', background: panel, borderRadius: 6, padding: '1.5rem', marginBottom: '1.5rem' }}>
               <div style={{ fontSize: '.52rem', letterSpacing: '.22em', textTransform: 'uppercase', color: 'rgba(201,169,110,.4)', marginBottom: '1rem' }}>
@@ -343,7 +515,9 @@ export default function PayPage() {
               {methods.length === 0 ? (
                 <div style={{ fontSize: '.73rem', color: 'rgba(232,213,183,.4)', lineHeight: 1.8 }}>
                   No payment methods are configured yet. Contact us at{' '}
-                  <a href="mailto:ographyy@gmail.com" style={{ color: gold }}>ographyy@gmail.com</a> and we will send instructions directly.
+                  <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: gold }}>{SUPPORT_EMAIL}</a>{' '}
+                  and we will send instructions directly.
+                  <PayHelp payRef={payRef} />
                 </div>
               ) : (
                 <>
@@ -368,28 +542,100 @@ export default function PayPage() {
                   </div>
 
                   {method && (
-                    <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                      {qrUrl && (
-                        <img
-                          src={qrUrl} alt={`${method.label} QR code`}
-                          style={{ width: 170, height: 170, objectFit: 'contain', background: '#fff', padding: 10, borderRadius: 6, flexShrink: 0 }}
-                        />
+                    <div>
+                      {/* Wrong-chain transfers are unrecoverable, so the network
+                          is stated before anything else, not buried in prose. */}
+                      {method.method_type === 'crypto' && method.network && (
+                        <div style={{
+                          border: '1px solid rgba(224,180,112,.35)', background: 'rgba(224,180,112,.07)',
+                          borderRadius: 6, padding: '.75rem 1rem', marginBottom: '1rem',
+                          fontSize: '.7rem', color: '#e0b470', lineHeight: 1.65,
+                        }}>
+                          Send <strong>{method.asset_code || 'funds'}</strong> on the{' '}
+                          <strong>{method.network}</strong> network only. A transfer on any other
+                          network cannot be recovered.
+                        </div>
                       )}
-                      <div style={{ flex: 1, minWidth: 220 }}>
-                        {method.account_holder && (
-                          <div style={{ fontSize: '.7rem', marginBottom: '.4rem' }}>
-                            <span style={{ color: 'rgba(232,213,183,.32)' }}>Account name </span>
-                            <span style={{ color: '#f0e8d8' }}>{method.account_holder}</span>
+
+                      {/* The amount in the currency they will actually send. */}
+                      {localAmount ? (
+                        <div style={{
+                          border: '1px solid rgba(201,169,110,.2)', borderRadius: 6,
+                          padding: '.8rem 1rem', marginBottom: '1rem',
+                          display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'baseline', gap: '.75rem', flexWrap: 'wrap',
+                        }}>
+                          <span style={{ fontSize: '.66rem', color: 'rgba(232,213,183,.4)' }}>
+                            Send exactly
+                          </span>
+                          <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: '1.15rem', color: gold }}>
+                            {localAmount}
+                          </span>
+                        </div>
+                      ) : method.currency_code !== 'USD' ? (
+                        // A missing rate must never silently imply 1:1 — that
+                        // would undercharge by ~88x on INR.
+                        <div style={{
+                          border: '1px solid rgba(224,180,112,.3)', background: 'rgba(224,180,112,.06)',
+                          borderRadius: 6, padding: '.75rem 1rem', marginBottom: '1rem',
+                          fontSize: '.7rem', color: '#e0b470', lineHeight: 1.65,
+                        }}>
+                          We have not published today&#39;s {method.currency_code} rate yet.
+                          Message us and we will confirm the exact {method.currency_code} amount
+                          before you send anything.
+                          <PayHelp payRef={payRef} />
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                        {qrUrl && (
+                          <div style={{ flexShrink: 0 }}>
+                            <img
+                              src={qrUrl} alt={`${method.label} QR code`}
+                              style={{ width: 170, height: 170, objectFit: 'contain', background: '#fff', padding: 10, borderRadius: 6 }}
+                            />
+                            <div style={{ fontSize: '.55rem', color: 'rgba(232,213,183,.25)', textAlign: 'center', marginTop: '.4rem' }}>
+                              Paying on this phone? Use Copy instead.
+                            </div>
                           </div>
                         )}
-                        {method.account_reference && (
-                          <div style={{ fontSize: '.7rem', marginBottom: '.4rem' }}>
-                            <span style={{ color: 'rgba(232,213,183,.32)' }}>Send to </span>
-                            <span style={{ color: '#f0e8d8', fontFamily: 'IBM Plex Mono, monospace' }}>{method.account_reference}</span>
+
+                        <div style={{ flex: 1, minWidth: 240 }}>
+                          {method.account_holder && (
+                            <CopyRow label="Account name" value={method.account_holder} mono={false} />
+                          )}
+                          {method.account_reference && (
+                            <CopyRow
+                              label={method.method_type === 'crypto' ? 'Pay ID / address' : 'Send to'}
+                              value={method.account_reference}
+                            />
+                          )}
+                          {method.memo_tag && (
+                            <CopyRow label="Memo / tag — required" value={method.memo_tag} />
+                          )}
+                          {/* The reference is what makes a manual transfer
+                              matchable. It needs copying more than anything. */}
+                          <CopyRow label="Payment reference — include this" value={payRef} />
+
+                          {/* Opens the UPI app directly with the payee filled
+                              in, which is the whole point on mobile. */}
+                          {upiHref && (
+                            <a
+                              href={upiHref}
+                              style={{
+                                display: 'inline-block', marginTop: '.35rem', marginBottom: '.6rem',
+                                background: gold, color: ink, textDecoration: 'none',
+                                padding: '.6rem 1.2rem', borderRadius: 4, fontSize: '.63rem',
+                                letterSpacing: '.12em', textTransform: 'uppercase', fontWeight: 600,
+                              }}
+                            >
+                              Open UPI app →
+                            </a>
+                          )}
+
+                          <div style={{ fontSize: '.7rem', color: 'rgba(232,213,183,.55)', lineHeight: 1.75, whiteSpace: 'pre-wrap', marginTop: '.6rem' }}>
+                            {method.instructions}
                           </div>
-                        )}
-                        <div style={{ fontSize: '.7rem', color: 'rgba(232,213,183,.55)', lineHeight: 1.75, whiteSpace: 'pre-wrap', marginTop: '.6rem' }}>
-                          {method.instructions}
                         </div>
                       </div>
                     </div>
