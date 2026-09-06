@@ -8,6 +8,100 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-06 (e) · Claude Opus 5 · Security lock, payment windows, receipts
+
+```
+ITEM        Lock catalog-images and find anything else that could leak. Create
+            payment links with a 15-30min expiry, renewable twice, with
+            escalation + feedback on expiry. Replace n8n with Resend +
+            WhatsApp. Generate and deliver a receipt on proof approval.
+
+ROOT CAUSE  The anon key is in a public repo BY DESIGN, so a storage/RLS grant
+            to `public` is a grant to the internet. Found, all live:
+
+              deliverables_storage_select   SELECT -> public, bucket check only
+              brief_files_storage_select    SELECT -> public, bucket check only
+                => anyone could READ every client's delivered work and every
+                   uploaded brief. Both buckets are marked private; the RLS
+                   policy overrode that.
+              deliverables_storage_insert   INSERT -> public
+              brief_files_storage_insert    INSERT -> public
+              catalog_images_insert/update/delete -> public
+              briefs_insert_public          INSERT -> anon, WITH CHECK (true)
+              brief_files_insert            INSERT -> public, WITH CHECK (true)
+
+            Payment windows: payment_links.expires_at existed but nothing ever
+            created a row or set one — 8 rows, all NULL — so the countdown had
+            never rendered and proof submission was untimed.
+
+            Receipts: payments.receipt_url was READ by /portal and written by
+            nothing. No bill was ever generated or sent.
+
+CHANGE      DB 010 — every hole above replaced with is_admin() or owner-scoped
+                     policies, via new owns_project_in_path(), which guards the
+                     uuid cast (a raw (foldername(name))[n]::uuid raises on a
+                     non-uuid segment, and an exception inside an RLS predicate
+                     fails the whole query).
+            DB 011 — payment_links + payment_id/renewals_used/max_renewals/
+                     window_minutes, CHECK window between 15 and 30 and
+                     renewals <= max; new payment_feedback table + 3 policies.
+            api/agreements/accepted  opens the window on acceptance
+            api/payments/extend      NEW, renews at most twice, from NOW
+            api/admin/proofs/review  NEW, approval + receipt, admin identity
+                                     from the session cookie not the body
+            lib/modules/deliver.ts   NEW, Resend + WhatsApp Cloud API
+            lib/modules/receipt.ts   NEW, light-theme inline-styled HTML bill
+            portal/pay               countdown renders, extend button, expiry
+                                     escalation + feedback form
+            portal/brief             createClient -> createBrowserClient
+
+STATUS      verified-deployed (code + schema). Channels NOT configured yet.
+
+VERIFY      As an ANONYMOUS caller holding the public anon key:
+              upload -> catalog-images / payment-qr / deliverables
+                403 {"message":"new row violates row-level security policy"}
+              POST /rest/v1/briefs        -> 401
+              POST /rest/v1/brief_files   -> 401
+              GET  catalog_items          -> 200  (storefront intact)
+              GET  payment_methods active -> 200
+            Policy counts after 010:
+              storage public writes left ......... 0
+              storage public selects left ........ 0  (excl. intentionally
+                                                       public catalog-images
+                                                       and payment-qr reads)
+              table INSERT policies WITH CHECK true  0
+            Production routes, unauthenticated:
+              /api/payments/extend  bad uuid -> 400 · valid uuid -> 401
+              /api/admin/proofs/review       -> 401 {"error":"Not signed in"}
+
+            HONEST CAVEAT: deliverables and brief-files hold ZERO objects, so
+            "anon list returns []" proves nothing on its own. The policy counts
+            and the 403 write refusals are the real evidence.
+
+OPEN        Channels are code-complete but OFF until env vars are set:
+              RESEND_API_KEY, RESEND_FROM           (email + receipts)
+              WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID
+              WHATSAPP_RECEIPT_TEMPLATE  (needed outside the 24h window)
+              PAYMENT_WINDOW_MINUTES     (optional, 15-30, default 30)
+              NEXT_PUBLIC_SITE_URL       (so links in receipts are absolute)
+            Until then sendEmail/sendWhatsApp return skipped:true and the admin
+            page says so per channel rather than claiming a receipt was sent.
+
+            Still open from earlier:
+            - UPI rail rate_per_usd is NULL
+            - QR images not uploaded
+            - 8 stalled payments KEPT as test records, by instruction
+            - repo still public
+            - /portal/brief writes projects.notes but `projects` has no UPDATE
+              policy, so that write is refused. Pre-existing, not fixed here.
+
+COMMIT      59d6785
+DEPLOY      auto from main
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-06 (d) · Claude Opus 5 · QR upload, proof formats, QR bucket security
 
 ```
