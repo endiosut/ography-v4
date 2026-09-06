@@ -8,6 +8,99 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-06 · Claude Opus 5 · Homepage intro + the missing checkout rail
+
+```
+ITEM        1) Replace the homepage intro copy with three outcome phrases.
+            2) "Checkout still cannot take money" — find out why and fix it.
+            3) Identify the 8 stalled runs.
+
+ROOT CAUSE  (1) Cosmetic. The two prose lines said something the page never
+            repeated; the triad below them ("01 / Build Trust" …) already was
+            the message.
+
+            (2) There was NO code path in the repository that created a Stripe
+            Checkout Session. `stripe` was in package.json but imported by zero
+            files. STRIPE_SECRET_KEY appeared in zero files. Every button in the
+            cart footer — including "Pay Upfront — Full Amount" — called
+            handleRequestAll(), which does
+            `window.location.href = '/contact?services=…'`. The webhook at
+            /api/stripe/webhook was waiting for an event nothing could produce.
+            Compounding it: the cart's two Stripe branches were gated on
+            `item.stripe_link`, and catalog_items HAS NO stripe_link column, so
+            `hasStripe`/`allHaveStripe` were permanently false and the cart
+            always fell through to the "Request These Services" branch.
+
+            (3) The 8 stalled runs are the 8 rows in `payments`. All 8:
+            status='pending', amount_usd IS NULL, stripe_session_id IS NULL,
+            paid_at IS NULL, created 27 Jul – 13 Aug. 8 payment_links exist to
+            match. They cannot be collected (no amount) or reconciled (no
+            session). Also measured: payment_methods has ZERO rows, so
+            /portal/pay renders no way to pay even when reached; projects
+            total_amount_usd is NULL on all 21.
+
+CHANGE      src/app/page.tsx          intro -> Build Trust / Capture Attention /
+                                      Scale Presence, resolving on "Market
+                                      authority."; stacked reveal, 4.45s;
+                                      prefers-reduced-motion; timer chain
+                                      rewritten (nested setTimeout leaked).
+            src/lib/pricing.ts        NEW. The pricing matrix: 6 fixed,
+                                      9 "From $X" (floor, not total), 2 /mo
+                                      retainers. Mixed carts refused.
+            src/app/api/checkout/     NEW. Server-priced Stripe Checkout
+              route.ts                Session; reuses handleLead + the
+                                      agreements_recalc trigger for the amount.
+            api/stripe/webhook/       Signature verification (was JSON.parse of
+              route.ts                an unauthenticated public POST — a
+                                      forgeable sale on a public repo);
+                                      accepts the agreement instead of
+                                      double-creating client+project;
+                                      idempotent on stripe_session_id.
+            src/context/CartContext   Real checkout wired to /api/checkout;
+              .tsx                    dead stripe_link branches removed;
+                                      auto-close timer moved state -> ref.
+            supabase/migrations/      NOT APPLIED. Schema proposal + the
+              008_payment_rails.sql   payment_methods blocker.
+
+STATUS      verified-deployed (code). Stripe is NOT yet switched on — see below.
+
+VERIFY      Intro, against the SHIPPED BUNDLE not the source:
+              curl -s https://ography-v4.vercel.app/ -o live.html
+              grep -o '"/_next/static/chunks/[^"]*\.js"' live.html | tr -d '"' | sort -u
+              # fetch each; chunk 0-~jck.d63u.6.js contains "Market authority" (1)
+              # and "Every great brand" (0).
+            NOTE: grepping the page HTML for "Build Trust" proves nothing — that
+            string is also in the Outcomes section, and the intro overlay is
+            gated on useEffect so it is absent from SSR output entirely.
+
+            Checkout route is live and the matrix works (writes nothing):
+              curl -X POST .../api/checkout -d '{"name":"x","email":"a@b.co","items":[]}'
+                -> 400 "Your cart is empty."
+              curl -X POST .../api/checkout with the $1,200/mo retainer AND the
+                $65 card set -> 409 "Monthly retainers and one-time projects
+                have to be checked out separately…"
+
+            Webhook now rejects forgery:
+              POST /api/stripe/webhook with a hand-written
+              checkout.session.completed body and no signature
+                -> 500 "Webhook not configured"  (fails CLOSED)
+              Row counts before and after all probes: payments 8, clients 17,
+              projects 21, agreements 2 — unchanged. Nothing was written.
+
+OPEN        Stripe env vars are NOT set. The webhook probe returns "Webhook not
+            configured", which means STRIPE_SECRET_KEY and/or
+            STRIPE_WEBHOOK_SECRET are absent on Vercel. Until both are set,
+            /api/checkout returns 503 and the cart falls back to the quote flow.
+            payment_methods still has 0 rows — the manual rail is still a dead
+            end regardless of Stripe.
+
+COMMIT      2fc348d05ba26b92f8fbafe86f0fba1f80565ece
+DEPLOY      dpl_BGzbWHgKQHP1LEhT31uC2MLVJ1fS
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-08-14 · Antigravity · Homepage & Catalog sync from latest production capture
 
 ```
