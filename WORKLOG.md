@@ -8,6 +8,79 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-07 · Claude Opus 5 · Notification centre, live FX — DEPLOY STILL BROKEN
+
+```
+ITEM        Build a notification centre (admin + client). Take the USD->INR
+            rate from a live online source rather than a typed number.
+            Owner reported the Vercel<->GitHub integration was reconnected.
+
+BLOCKER     ** STILL NOT DEPLOYING. ** Re-checked after the owner's reconnect:
+            zero deployments since babe8d3, across ~15 minutes of polling on
+            two separate occasions. /api/outbox/drain, /api/admin/payments/
+            issue-link and /api/admin/payments/refresh-rates all 404 in prod.
+            Local build is clean and every route is in the route table, so this
+            is the integration, not the code.
+            NEXT LEVER: a Deploy Hook (Project > Settings > Git > Deploy Hooks)
+            gives a POST URL that triggers a build independently of the push
+            webhook. If the hook also fails, Vercel has lost repo READ access
+            and the Git connection must be removed and re-added.
+
+CHANGE      DB 013 — notifications table. One table, two audiences, with a
+                     CHECK that a client row carries a client_id and an admin
+                     row does not, so a client-targeted row cannot exist
+                     unowned. 3 RLS policies: admin all; client SELECT own;
+                     client UPDATE own (read-marking only).
+            DB 014 — SECURITY DEFINER triggers on payment_proofs and
+                     payment_feedback. Those are client-side inserts straight
+                     to Postgres and never pass an app server, so no route
+                     could reliably notify on them — the same shape as the bug
+                     where accepting an agreement notified nobody.
+            lib/modules/notifications.ts  notify() + a deliberately small event
+                                          catalogue. Admin gets decisions and
+                                          bleeding; client gets state changes.
+            components/NotificationBell   one component, both audiences. RLS
+                                          does the filtering, so there is no
+                                          client-side is-admin check to botch.
+                                          Mounted in NavBar and AdminSidebar.
+            lib/modules/fx.ts             two key-free providers in order.
+            api/admin/payments/refresh-rates  cron + on-demand button.
+            outbox                        dead-letter now raises a CRITICAL
+                                          admin notification.
+
+STATUS      fixed-local / committed / NOT DEPLOYED
+
+VERIFY      Constraints and triggers were PROVEN, not assumed:
+              · inserting a client notification with no client_id -> raises
+                (a DO block re-raises if it is accepted)
+              · inserting a payment_feedback row -> notification count rises;
+                probe then deleted, notifications and payment_feedback both
+                back to 0
+              · updating payment_links.token -> raises (from session e)
+            FX providers measured live today:
+              open.er-api.com   USD->INR 94.511608
+              frankfurter.dev   USD->INR 94.49   (ECB, 2026-09-04)
+            Within 0.02% of each other.
+            Local: tsc clean, next build clean.
+
+CORRECTION  I earlier told the owner the USD->INR rate was "around 88". It is
+            ~94.5. Recorded because it would have mispriced every INR payment.
+
+OPEN        1. THE DEPLOY. Nothing below is live until it is fixed.
+            2. RESEND_FROM cannot use ography-v4.vercel.app — you cannot add
+               DNS records to a .vercel.app domain, so it can never be verified
+               for email. Either use onboarding@resend.dev (sends ONLY to the
+               Resend account owner's own address) or register a real domain.
+            3. UPI rate still null in prod until refresh-rates can run.
+            4. 8 stalled payments KEPT as test records, by instruction.
+
+COMMIT      afa2dd2
+DEPLOY      NONE — integration still broken
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-06 (f) · Claude Opus 5 · Outbox, link integrity, CI — AND A BROKEN DEPLOY HOOK
 
 ```
