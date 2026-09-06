@@ -8,6 +8,82 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-06 (d) · Claude Opus 5 · QR upload, proof formats, QR bucket security
+
+```
+ITEM        Owner: no QR upload placeholder on the rail editor (wanted the
+            /admin/catalog/upload pattern). Also asked about proof file
+            formats, the proof-upload timer, receipts, n8n alternatives,
+            repo visibility, and fork status.
+
+ROOT CAUSE  QR: the rail editor persisted qr_code_path but had no control to
+            set it, so it could only ever be null.
+
+            SECURITY, found while building it — the pay page read QR codes from
+            `catalog-images`, and that bucket's policies are:
+              catalog_images_insert / _update / _delete  ->  role `public`
+            i.e. ANY anonymous visitor can write or replace an object in it. A
+            payment QR stored there could be swapped for an attacker's own
+            code and every later payment would go to them, with nothing on the
+            page looking wrong. QR codes must not live in that bucket.
+
+            TIMER: there is none. useCountdown reads payment_links.expires_at;
+            measured — payment_links has 8 rows and expires_at is NULL on ALL
+            8, and no code anywhere creates a payment_link or sets an expiry.
+            The countdown UI has never had data to render. So a client has
+            unlimited time to submit proof, and nothing expires.
+
+            PROOF FORMATS: accept was 'image/*,application/pdf'. HEIC/HEIF are
+            what iPhones actually produce, and several in-app browsers do not
+            match HEIC against the bare wildcard — greying out the exact
+            screenshot the client is trying to attach.
+
+CHANGE      DB (009_payment_qr_bucket, applied):
+              new bucket `payment-qr`, public=true, with SELECT to public and
+              INSERT/UPDATE/DELETE gated on is_admin().
+            admin/payments/methods  QR uploader: click-the-placeholder, live
+                                    preview of the STORED image, 5MB cap,
+                                    PNG/JPG/HEIC. Path held on the draft and
+                                    written only on save. qr_code_path added to
+                                    the save payload (it was being dropped).
+            portal/pay/[paymentId]  reads QR from `payment-qr`; proof accept
+                                    lists png/jpeg/webp/heic/heif/pdf, shows
+                                    the list, rejects >10MB at pick time.
+
+STATUS      verified-deployed
+
+VERIFY      Bucket, re-queried after apply:
+              storage.buckets payment-qr public ......... true
+              payment_qr_* policies ..................... 4
+              of which write policies gated on is_admin() 3
+            Production:
+              /admin/payments/methods ................... 307 (auth gate)
+              GET .../object/public/payment-qr/<missing>  400 (bucket exists)
+              anon REST payment_methods?is_active=eq.true returns both rails
+            Repo, from the GitHub API:
+              fork false · forks_count 0 · visibility public
+
+NOTE        The commit message on 40ab910 lost two words to shell backtick
+            substitution (`public` and `payment-qr`). Code unaffected; not
+            amended because that would mean force-pushing main. Full detail is
+            here instead.
+
+OPEN        Unchanged from (c), plus:
+            - catalog-images still grants INSERT/UPDATE/DELETE to `public`
+              (1 object in it). Pre-existing and unrelated to payments, so it
+              was flagged, not changed. Anyone can overwrite catalog imagery.
+            - The 8 stalled payments are being KEPT as-is at the owner's
+              instruction, as a record of earlier tests. Do not void them.
+            - No receipt document exists. Nothing renders or delivers a bill;
+              payments.receipt_url is read by /portal but never written.
+
+COMMIT      40ab910
+DEPLOY      auto from main
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-06 (c) · Claude Opus 5 · Rails live, proof review, copy-to-pay
 
 ```
