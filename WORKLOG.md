@@ -8,6 +8,100 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-06 (c) · Claude Opus 5 · Rails live, proof review, copy-to-pay
+
+```
+ITEM        Owner approved the schema and supplied real rail details. Do all
+            five open items. Also asked: will buying Anthropic API credits make
+            n8n fire?
+
+ROOT CAUSE  n8n: NO, and the two are unrelated. Anthropic credits feed
+            ANTHROPIC_API_KEY (/api/ai, /api/ai-studio/*). n8n is a separate
+            SaaS, and it is GONE:
+              GET https://ographyy.app.n8n.cloud/webhook/ography-new-lead
+              -> 404 "<title>404 - No workspace here</title>"
+            That is not an inactive workflow — n8n answers those with a JSON
+            "webhook not registered". The WORKSPACE does not exist. And it was
+            invisible for the life of the project because fireEvent was
+              try { await fetch(...) } catch { }
+            A 404 is a RESOLVED fetch, so it never reached the catch. Nothing
+            was ever logged on any path.
+
+CHANGE      DB (applied with approval, 008a-008d):
+              008a  payments_admin_write policy  <- the approval blocker
+              008b  payment_proofs.file_path nullable; +txid/paid_amount/
+                    paid_currency; UNIQUE(payment_id) -> partial unique on OPEN
+                    proofs so a rejected client can resubmit
+              008c  payment_methods +network/memo_tag/asset_code/min/max/
+                    rate_per_usd/rate_updated_at/settlement_window; CHECK that
+                    crypto has a network; payments +payment_method_id/
+                    display_currency/display_amount/rate_per_usd/quote_expires_at
+              008d  seeded 2 LIVE rails:
+                      UPI / Paytm (India)  6352209640@pthdfc  INR
+                      USDT — Binance Pay   OGBillions9899     Binance Pay
+            Code:
+              lib/support.ts          NEW. WhatsApp + email, one definition.
+              lib/modules/notify.ts   env-configurable URL, 8s timeout, logs
+                                      non-2xx, returns delivered:boolean.
+              api/agreements/accepted NEW. Fires AGREEMENT_ACCEPTED, but only
+                                      after re-reading the row and confirming
+                                      the DB says accepted — cannot be used to
+                                      fake a signature.
+              admin/payments/proofs   NEW. Review queue: signed URLs (private
+                                      bucket), rejection reason required,
+                                      approval re-queries the payment row.
+              portal/pay/[paymentId]  CopyRow (address/memo/reference), upi://
+                                      deep link, crypto network warning, local
+                                      -currency amount, rejected proofs reopen
+                                      the form, WhatsApp/email escalation.
+              portal/page.tsx         Pay button on unsettled payments;
+                                      paymentFor() prefers the UNPAID row.
+              contact + catalog       removed dead stripe_link UI incl. the
+                                      test-mode buy.stripe.com URL.
+
+STATUS      verified-deployed
+
+VERIFY      DB, re-queried after apply (not trusting success responses):
+              payments ALL-policy ........ 1
+              file_path nullable ......... YES
+              old UNIQUE ................. 0   partial unique ... 1
+              crypto-network CHECK ....... 1
+              new method cols ............ 8   new payment cols . 5
+              live rails ................. 2
+            Production HTTP:
+              POST /api/agreements/accepted {"agreementId":"not-a-uuid"} -> 400
+              POST same with an unknown uuid                            -> 404
+              /admin/payments/{proofs,methods}                          -> 307
+            Shipped bundles (11 chunks off /contact and /catalog) contain no
+            "buy.stripe.com". NOTE: an earlier check grepped the PAGE HTML for
+            "Pay Now" and passed for the wrong reason — that block never
+            rendered anyway, because stripe_link was always undefined.
+            get_advisors(security): no new findings; all remaining are
+            pre-existing (SECURITY DEFINER helpers, cart tables, leaked-password
+            protection off).
+
+OPEN        1. n8n workspace is dead. Recreate it (or use any webhook target)
+               and set N8N_WEBHOOK_URL on Vercel. Until then no client or admin
+               notification is delivered — the redirect after signing is the
+               ONLY thing telling a client to pay.
+            2. UPI rail has rate_per_usd NULL, so INR clients are shown "we
+               will confirm the exact amount" instead of a figure. Set it in
+               /admin/payments/methods. Deliberately not guessed — the rate
+               decides how much money arrives.
+            3. QR images not uploaded. Put them in the `catalog-images` bucket
+               and set payment_methods.qr_code_path to the object path.
+            4. The 8 stalled payments are STILL pending with NULL amounts.
+               Voiding them changes live rows and was never approved — SQL is
+               in section 8 of the migration.
+            5. Repo is PUBLIC (githubRepoVisibility flipped in August).
+
+COMMIT      cf6c1a1, 4667333
+DEPLOY      auto from main
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-06 (b) · Claude Opus 5 · Drop Stripe; wire the P2P settlement loop
 
 ```
