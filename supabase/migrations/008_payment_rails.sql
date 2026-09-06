@@ -1,142 +1,215 @@
--- 008_payment_rails.sql
+-- 008_payment_rails.sql — P2P settlement model (UPI / mobile money / bank /
+-- crypto), Binance-P2P and 1xbet style: the client picks the rail that suits
+-- them, pays out of band, submits proof, and an admin approves.
 --
 -- ####################################################################
 -- ##  NOT APPLIED. Requires explicit written approval per AGENTS.md  ##
 -- ##  rule 4 before anything here touches unzwefrtgsgmtljlbavf.      ##
 -- ####################################################################
 --
+-- GOOD NEWS FIRST. The schema was already designed for this model:
+--
+--   payment_methods.method_type CHECK IN
+--     ('upi','mobile_money','bank_transfer','crypto','cash','other')
+--
+-- — exactly the rails wanted. payment_proofs, payment_links and the
+-- /portal/pay screen all exist. This migration closes the gaps that stop the
+-- existing design from actually settling money.
+--
 -- Measured state, 06 Sep 2026, production:
+--   payment_methods    0 rows      <- the hard blocker: nothing to pick from
+--   payment_proofs     0 rows
+--   payment_links      8 rows
+--   payments           8 rows, all pending, all amount_usd NULL
+--   RLS on payments:   SELECT policy ONLY. No UPDATE policy exists at all.
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 1. THE BLOCKER: admin cannot mark anything paid
+-- ─────────────────────────────────────────────────────────────────────────
+-- `payments` has RLS enabled and exactly one policy, payments_select_own
+-- (SELECT). There is NO insert or update policy for any role. The admin page
+-- at /admin/payments does:
 --
---   catalog_items         17 rows, 17 priced, NO stripe_link column
---   agreements             2 rows, both 'sent', never accepted
---   payments               8 rows, ALL status='pending',
---                                  ALL amount_usd IS NULL,
---                                  ALL stripe_session_id IS NULL
---   payment_methods        0 rows  <-- nothing for a client to pay INTO
---   payment_links          8 rows
---   payment_proofs         0 rows
---   checkout_sessions      0 rows
---   projects              21 rows, total_amount_usd NULL on all 21
+--     await supabase.from('payments').update({status:'paid', ...}).eq('id', id)
+--     setPayments(ps => ps.map(...))   // optimistic, error never checked
 --
--- Sections 1 and 2 are safe and additive. Section 3 writes to live rows and
--- needs a decision from you first. Section 4 is the one that actually unblocks
--- the manual rail and needs YOUR account details — I will not invent them.
+-- The UPDATE is silently refused by RLS and the return value is discarded, so
+-- the row turns green in the table and NOTHING CHANGES IN THE DATABASE. The
+-- admin approval loop has never been able to work. This is the single most
+-- important statement in this file.
+
+create policy payments_admin_write on public.payments
+  for all to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- Clients must never write their own payment rows — proof submission is the
+-- only client-side write, and that goes to payment_proofs.
+
+-- Verify (must return true AFTER, false BEFORE):
+--   select exists (
+--     select 1 from pg_policies
+--      where tablename='payments' and cmd in ('ALL','UPDATE')
+--   );
+-- Then re-query the ROW, not the API response:
+--   select status, paid_at from payments where id = '<the one you marked>';
 
 
 -- ─────────────────────────────────────────────────────────────────────────
--- 1. Make the pricing matrix explicit instead of regex-derived
+-- 2. Reference-only proof submission is broken today
 -- ─────────────────────────────────────────────────────────────────────────
--- src/lib/pricing.ts currently classifies each row by parsing price_note:
---   "/mo"      -> recurring  (2 rows)  must be a Stripe subscription
---   "From $X"  -> quote      (9 rows)  the price is a FLOOR, deposit only
---   otherwise  -> fixed      (6 rows)  chargeable in full
--- That works, but the day someone edits a price_note to "Starting at $320" the
--- classification silently flips to `fixed` and the site charges a total nobody
--- agreed to. A column cannot be broken by copywriting.
-
-alter table public.catalog_items
-  add column if not exists pricing_mode text
-    check (pricing_mode in ('fixed','quote','recurring'));
-
-update public.catalog_items
-   set pricing_mode = case
-         when price_note ~* '/\s*mo\b|per month|monthly' then 'recurring'
-         when price_note ~* 'from\s*\$'                  then 'quote'
-         else 'fixed'
-       end
- where pricing_mode is null;
-
--- Verify (expected: recurring 2, quote 9, fixed 6):
---   select pricing_mode, count(*) from catalog_items group by 1 order by 2 desc;
-
-
--- ─────────────────────────────────────────────────────────────────────────
--- 2. Stop payments rows being created with no amount
--- ─────────────────────────────────────────────────────────────────────────
--- All 8 existing rows have amount_usd NULL. /portal/pay renders the amount as
--- "—", so even a client who reached that page could not know what to send.
--- A payment with no amount is not a payment.
+-- /portal/pay accepts EITHER a screenshot OR a reference:
+--     if (!file && !reference.trim()) { error('Attach a screenshot or enter
+--                                              the transaction reference') }
+-- and then inserts `file_path: filePath` where filePath is null when no file
+-- was chosen. But the column is NOT NULL, so a reference-only submission dies
+-- with 23502. The catch block only special-cases 23505, so the client sees
+-- "We could not record your submission" with no idea why.
 --
--- NOT NULL cannot be added while those 8 rows exist, so this is a CHECK that
--- only bites new rows once the backfill in section 3 has run.
+-- For crypto this matters more than for anything else: an on-chain txid is
+-- verifiable evidence, a screenshot is not.
 
--- Run AFTER section 3:
--- alter table public.payments
---   add constraint payments_amount_present
---   check (amount_usd is not null and amount_usd >= 0) not valid;
--- alter table public.payments validate constraint payments_amount_present;
+alter table public.payment_proofs alter column file_path drop not null;
 
--- Idempotency guard for the Stripe webhook — two retries of the same event must
--- not become two sales. This is the DB-level backstop for the check the webhook
--- already does in code.
-create unique index if not exists payments_stripe_session_uniq
-  on public.payments (stripe_session_id)
-  where stripe_session_id is not null;
+alter table public.payment_proofs
+  add column if not exists txid text,           -- on-chain hash / UTR / UPI ref
+  add column if not exists paid_amount numeric, -- what they say they actually sent
+  add column if not exists paid_currency text;
+
+-- Verify:
+--   select is_nullable from information_schema.columns
+--    where table_name='payment_proofs' and column_name='file_path';  -- 'YES'
 
 
 -- ─────────────────────────────────────────────────────────────────────────
--- 3. The 8 stalled payments — DECISION NEEDED, nothing here runs by default
+-- 3. A rejected proof currently ends the client's ability to pay, forever
 -- ─────────────────────────────────────────────────────────────────────────
--- All 8 were created 27 Jul – 13 Aug, before the agreements pipeline existed.
--- None has an amount, a Stripe session, or a linked agreement, so none can be
--- collected and none can be reconciled. They are not recoverable as payments —
--- only as leads.
+-- payment_proofs has UNIQUE (payment_id) — one proof per payment, ever. In a
+-- manual settlement model rejection is ROUTINE: wrong amount, unreadable
+-- screenshot, wrong crypto network, paid the wrong method. With this
+-- constraint the client cannot submit a corrected proof, and the payment is
+-- stuck permanently. Replace it with a rule that only blocks a SECOND OPEN
+-- proof, while allowing a resubmission after a rejection.
+
+alter table public.payment_proofs drop constraint payment_proofs_payment_id_key;
+
+create unique index payment_proofs_one_open_per_payment
+  on public.payment_proofs (payment_id)
+  where review_status in ('submitted', 'under_review');
+
+-- Verify:
+--   -- two rejected + one open on the same payment must be legal:
+--   select payment_id, review_status, count(*) from payment_proofs
+--    group by 1,2;
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 4. Crypto needs a network. Without it, money is destroyed, not delayed.
+-- ─────────────────────────────────────────────────────────────────────────
+-- payment_methods stores account_reference (a wallet address) but has nowhere
+-- to say WHICH CHAIN. USDT sent on BEP20 to a TRC20 address is gone —
+-- irrecoverable, not refundable. `memo_tag` matters for the same reason on
+-- exchanges that use a shared deposit address: no memo, no attribution.
+
+alter table public.payment_methods
+  add column if not exists network text,        -- 'TRC20' | 'ERC20' | 'BEP20' | 'Lightning'
+  add column if not exists memo_tag text,       -- required by some exchange deposits
+  add column if not exists asset_code text,     -- 'USDT' | 'BTC' — distinct from fiat currency
+  add column if not exists min_amount_usd numeric,
+  add column if not exists max_amount_usd numeric;
+
+-- A crypto method without a network is a trap. Enforce it.
+alter table public.payment_methods
+  add constraint payment_methods_crypto_needs_network
+  check (method_type <> 'crypto' or network is not null);
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 5. The FX gap — the client is quoted USD but pays in their own currency
+-- ─────────────────────────────────────────────────────────────────────────
+-- payments.amount_usd is USD. payment_methods.currency_code says the rail
+-- settles in (say) INR. Nothing converts between them, so a client choosing
+-- UPI is told "$47.50" and has to guess the rupee amount — and whatever they
+-- guess, you cannot tell an underpayment from a rate difference.
 --
--- Option A (recommended) — mark them void so dashboards stop counting dead
--- pipeline, keeping the row for audit:
+-- Binance P2P solves this by LOCKING a rate for a short window. Same idea:
+-- freeze the rate and the local amount onto the payment at selection time, so
+-- the number shown is the number owed, whatever the market does next.
+
+alter table public.payment_methods
+  add column if not exists rate_per_usd numeric,          -- units of currency_code per 1 USD
+  add column if not exists rate_updated_at timestamptz,
+  add column if not exists settlement_window_minutes integer not null default 60;
+
+alter table public.payments
+  add column if not exists payment_method_id uuid references public.payment_methods(id),
+  add column if not exists display_currency text,     -- frozen at selection
+  add column if not exists display_amount numeric,    -- frozen at selection
+  add column if not exists rate_per_usd numeric,      -- the rate actually honoured
+  add column if not exists quote_expires_at timestamptz;
+
+-- NOTE: a NULL rate_per_usd must render as "contact us for the local amount",
+-- never as a silent 1:1. 1 USD = 1 INR would undercharge by ~88x.
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 6. is_active DEFAULTS TO FALSE — almost certainly why this table is empty
+-- ─────────────────────────────────────────────────────────────────────────
+-- A row inserted without is_active explicitly true is invisible to
+-- /portal/pay, which filters .eq('is_active', true). The page then renders an
+-- empty list: it loads, looks fine, and offers no way to pay.
+--
+-- Left as-is deliberately (defaulting to visible is worse — a half-configured
+-- rail would go live the moment it is created). The admin UI now sets it
+-- explicitly and shows the on/off state.
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 7. Seed the rails. FILL IN YOUR REAL DETAILS — placeholders are obviously
+--    fake on purpose so this cannot be run by accident.
+-- ─────────────────────────────────────────────────────────────────────────
+-- Or skip this entirely and use /admin/payments/methods, which now does it
+-- through the UI.
+--
+-- insert into public.payment_methods
+--   (label, method_type, country_code, currency_code, asset_code, network,
+--    instructions, account_holder, account_reference, rate_per_usd,
+--    rate_updated_at, is_active, sort_order)
+-- values
+--   ('UPI (India)','upi','IN','INR',null,null,
+--    'Open any UPI app, send the exact amount, and put the project reference in the note.',
+--    '<<YOUR NAME>>','<<yourvpa@bank>>', 88.0, now(), true, 1),
+--   ('Mobile money','mobile_money','<<CC>>','<<CUR>>',null,null,
+--    'Send to the number below and quote the project reference.',
+--    '<<YOUR NAME>>','<<+000000000>>', null, null, true, 2),
+--   ('Bank transfer (USD)','bank_transfer',null,'USD',null,null,
+--    'IBAN/SWIFT below. Use the project reference as the payment reason.',
+--    '<<ACCOUNT HOLDER>>','<<IBAN>>', 1.0, now(), true, 3),
+--   ('USDT (Binance, TRC20)','crypto',null,'USD','USDT','TRC20',
+--    'Send USDT on the TRON (TRC20) network ONLY. Any other network will lose the funds.',
+--    'OGraphy','<<TRC20 WALLET ADDRESS>>', 1.0, now(), true, 4);
+--
+-- Verify — this MUST return at least one row or /portal/pay is still a dead end:
+--   select label, method_type, network, currency_code, is_active
+--     from payment_methods where is_active order by sort_order;
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 8. The 8 stalled payments — DECISION NEEDED, nothing here runs by default
+-- ─────────────────────────────────────────────────────────────────────────
+-- All 8 created 27 Jul – 13 Aug with amount_usd NULL and no agreement. They
+-- cannot be collected (no amount to ask for) or reconciled (no session).
+--
+-- Recommended — void them so the dashboard stops counting dead pipeline,
+-- keeping the rows for audit:
 --
 --   update public.payments
 --      set status = 'void'
 --    where status = 'pending'
 --      and amount_usd is null
---      and stripe_session_id is null
 --      and created_at < '2026-08-16';
 --   -- expected: UPDATE 8
 --
--- Option B — price them from their project's agreement, where one exists.
--- Currently 0 of the 8 projects has an agreement_id, so this updates 0 rows.
--- Listed only so it is on record that it was considered:
---
---   update public.payments p
---      set amount_usd = a.deposit_usd
---     from public.projects pr
---     join public.agreements a on a.id = pr.agreement_id
---    where p.project_id = pr.id and p.amount_usd is null;
---
--- Verify either way:
---   select status, count(*), count(amount_usd) priced from payments group by 1;
-
-
--- ─────────────────────────────────────────────────────────────────────────
--- 4. payment_methods is EMPTY — this is the manual rail's hard blocker
--- ─────────────────────────────────────────────────────────────────────────
--- /portal/pay/[paymentId] renders the list of ways to pay from this table.
--- With 0 active rows it renders an empty list: the page loads, looks fine, and
--- offers the client no way to send money. No amount of front-end work fixes
--- that — the data is not there.
---
--- Note `is_active` DEFAULTS TO FALSE, so a row inserted without it explicitly
--- set stays invisible. That is almost certainly how this table ended up empty
--- in effect even if rows were attempted.
---
--- FILL IN YOUR REAL DETAILS. Placeholders are left obviously fake on purpose so
--- this cannot be run by accident.
---
---   insert into public.payment_methods
---     (label, method_type, country_code, currency_code, instructions,
---      account_holder, account_reference, is_active, sort_order)
---   values
---     ('UPI (India)', 'upi', 'IN', 'INR',
---      'Send the exact amount and put the project reference in the note.',
---      '<<YOUR NAME>>', '<<yourvpa@bank>>', true, 1),
---     ('Mobile money', 'mobile_money', '<<CC>>', '<<CUR>>',
---      'Send to the number below and quote the project reference.',
---      '<<YOUR NAME>>', '<<+000000000>>', true, 2),
---     ('Bank transfer', 'bank_transfer', null, 'USD',
---      'IBAN/SWIFT below. Quote the project reference as the payment reason.',
---      '<<ACCOUNT HOLDER>>', '<<IBAN / ACCOUNT NO>>', true, 3);
---
 -- Verify:
---   select label, method_type, is_active from payment_methods order by sort_order;
---   -- must return at least one row with is_active = true, or the pay page is
---   -- still a dead end.
+--   select status, count(*), count(amount_usd) priced from payments group by 1;

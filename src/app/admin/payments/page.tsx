@@ -15,6 +15,8 @@ export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.from('payments')
@@ -29,9 +31,47 @@ export default function PaymentsPage() {
   const pending = payments.filter(p => p.status === 'pending').reduce((s,p) => s + (p.amount_usd||0), 0)
   const thisMonth = payments.filter(p => p.status === 'paid' && p.paid_at && new Date(p.paid_at).getMonth() === new Date().getMonth()).reduce((s,p) => s + (p.amount_usd||0), 0)
 
+  // Rewritten 06 Sep 2026. Was:
+  //
+  //   await supabase.from('payments').update({status:'paid', ...}).eq('id', id)
+  //   setPayments(ps => ps.map(...))     // optimistic; error never read
+  //
+  // `payments` has RLS enabled with a SELECT policy and NO update policy for
+  // any role, so that UPDATE was refused every time. The return value was
+  // discarded and the row was repainted green regardless — the page reported a
+  // collection that had not happened, and the number reverted on next load.
+  //
+  // Now the error is read, the write is confirmed by re-reading the row, and
+  // the UI only changes if the DATABASE changed.
   const markPaid = async (id: string) => {
-    await supabase.from('payments').update({status:'paid', paid_at:new Date().toISOString()}).eq('id', id)
-    setPayments(ps => ps.map(p => p.id === id ? {...p, status:'paid', paid_at:new Date().toISOString()} : p))
+    setError(null); setNotice(null)
+
+    const { error: err } = await supabase
+      .from('payments')
+      .update({ status: 'paid', paid_at: new Date().toISOString() })
+      .eq('id', id)
+
+    if (err) {
+      console.error('[admin/payments] markPaid:', err.message, err.code)
+      setError(
+        err.code === '42501'
+          ? 'The database refused this update. `payments` has no admin write policy yet — apply section 1 of supabase/migrations/008_payment_rails.sql.'
+          : `Could not mark paid: ${err.message}`
+      )
+      return
+    }
+
+    // Re-query the row itself. A silent no-op returns no error either.
+    const { data: row } = await supabase
+      .from('payments').select('id,status,paid_at').eq('id', id).maybeSingle()
+
+    if (row?.status !== 'paid') {
+      setError('The update reported success but the row is still not paid. Nothing was changed.')
+      return
+    }
+
+    setPayments(ps => ps.map(p => p.id === id ? { ...p, status: 'paid', paid_at: row.paid_at } : p))
+    setNotice('Payment marked paid.')
   }
 
   const STATUS_COLORS: Record<string,string> = {
@@ -46,6 +86,17 @@ export default function PaymentsPage() {
           <div style={{fontSize:'.55rem', letterSpacing:'.2em', textTransform:'uppercase', color:'var(--gold)', marginBottom:'.4rem'}}>Finance</div>
           <h1 style={{fontFamily:'Cormorant Garamond,serif', fontSize:'1.8rem', fontWeight:300, color:'var(--cream)'}}>Payments</h1>
         </div>
+
+        {error && (
+          <div style={{border:'1px solid rgba(239,68,68,.35)', background:'rgba(239,68,68,.07)', padding:'.85rem 1.1rem', marginBottom:'1rem', fontSize:'.75rem', color:'#ef4444', lineHeight:1.6}}>
+            {error}
+          </div>
+        )}
+        {notice && (
+          <div style={{border:'1px solid rgba(39,174,96,.3)', background:'rgba(39,174,96,.07)', padding:'.85rem 1.1rem', marginBottom:'1rem', fontSize:'.75rem', color:'#27ae60'}}>
+            {notice}
+          </div>
+        )}
 
         {/* Summary */}
         <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'1px', background:'var(--border)', border:'1px solid var(--border)', marginBottom:'1.5rem'}}>

@@ -93,6 +93,9 @@ export default function AgreementPage() {
   const [signature, setSignature] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState<{ email: string; name?: string } | null>(null);
+  // The deposit this agreement opened, so a client returning to an already
+  // accepted agreement can still reach the payment screen.
+  const [paymentId, setPaymentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -111,8 +114,20 @@ export default function AgreementPage() {
       if (!signature) setSignature(u.user_metadata?.full_name || '');
 
       const { data: proj } = await sb
-        .from('projects').select('project_ref').eq('agreement_id', id).limit(1).maybeSingle();
+        .from('projects').select('id, project_ref').eq('agreement_id', id).limit(1).maybeSingle();
       if (proj?.project_ref) setProjectRef(proj.project_ref);
+
+      if (proj?.id) {
+        const { data: deposit } = await sb
+          .from('payments')
+          .select('id')
+          .eq('project_id', proj.id)
+          .eq('milestone', 'deposit')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setPaymentId(deposit?.id ?? null);
+      }
     } catch (e) {
       console.error('[agreement] load threw:', e);
       setError('We could not load this agreement.');
@@ -149,6 +164,44 @@ export default function AgreementPage() {
         setError('We could not record your acceptance. Nothing was charged — please try again.');
         return;
       }
+
+      // ── THE HANDOFF (added 06 Sep 2026) ──────────────────────────────────
+      //
+      // Before this, accepting called load() and re-rendered THIS page. The
+      // trigger had just opened a `deposit` payment row, but nothing told the
+      // client it existed and nothing linked to it: /portal/pay/[paymentId]
+      // was referenced by zero hrefs anywhere in src/, and no notification is
+      // sent on acceptance (fireEvent is only called from handleLead and
+      // logEvent, and this update goes browser -> Postgres, never through the
+      // app server). So the client signed and the flow simply stopped. That is
+      // why 2 agreements produced 0 collected payments.
+      //
+      // agreements_on_accept runs inside this UPDATE's transaction, so by the
+      // time it returns the payment row is committed and readable.
+      const { data: proj } = await sb
+        .from('projects').select('id').eq('agreement_id', agreement.id).limit(1).maybeSingle();
+
+      if (proj?.id) {
+        const { data: deposit } = await sb
+          .from('payments')
+          .select('id')
+          .eq('project_id', proj.id)
+          .eq('milestone', 'deposit')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (deposit?.id) {
+          setPaymentId(deposit.id);
+          router.push(`/portal/pay/${deposit.id}`);
+          return;
+        }
+        // No deposit row means the trigger did not fire as expected. Do not
+        // pretend it worked — re-render and let the accepted view show the
+        // fallback route to the portal.
+        console.error('[agreement] accepted but no deposit payment row for project', proj.id);
+      }
+
       await load();
     } catch (e) {
       console.error('[agreement] accept threw:', e);
@@ -224,6 +277,26 @@ export default function AgreementPage() {
               <strong style={{ color: gold, fontFamily: 'IBM Plex Mono, monospace' }}>{projectRef || a.agreement_ref}</strong>{' '}
               as the payment reference so we can match it immediately.
             </div>
+
+            {/* Without this the accepted state was a cul-de-sac: the deposit
+                row existed, but the client had no way to reach it. */}
+            {paymentId ? (
+              <Link
+                href={`/portal/pay/${paymentId}`}
+                style={{
+                  display: 'inline-block', marginTop: '1.1rem', background: gold, color: ink,
+                  padding: '.8rem 2rem', fontSize: '.65rem', letterSpacing: '.14em',
+                  textTransform: 'uppercase', textDecoration: 'none', fontWeight: 600,
+                }}
+              >
+                Choose how to pay →
+              </Link>
+            ) : (
+              <div style={{ marginTop: '1.1rem', fontSize: '.68rem', color: 'rgba(232,213,183,.35)' }}>
+                We are preparing your payment options — refresh in a moment, or{' '}
+                <Link href="/portal" style={{ color: gold }}>go to your portal</Link>.
+              </div>
+            )}
           </div>
         )}
 

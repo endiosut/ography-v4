@@ -216,65 +216,17 @@ export function CartIcon() {
 
 // ── Cart Sidebar — use in layout or any page ──
 export function CartSidebar() {
-  const { cart, cartCount, cartTotal, cartOpen, setCartOpen, removeFromCart, cancelAutoClose } = useCart();
+  const { cart, cartCount, cartTotal, cartOpen, setCartOpen, removeFromCart } = useCart();
 
-  // Checkout state. `payOpen` reveals the two fields Stripe needs before a
-  // session can be created; nothing else is collected here because Stripe's own
-  // page collects the card.
-  const [payOpen, setPayOpen] = useState(false);
-  const [payName, setPayName] = useState('');
-  const [payEmail, setPayEmail] = useState('');
-  const [payBusy, setPayBusy] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
-
+  // No card checkout here by design. The cart's job is to turn a selection into
+  // a priced AGREEMENT; money is collected afterwards on /portal/pay, where the
+  // client picks the settlement method that suits them (UPI, mobile money, bank
+  // transfer, crypto). /contact is what creates that agreement today.
   const handleRequestAll = () => {
     const services = cart.map(i => i.name).join(',');
     try { sessionStorage.setItem('og_contact_services', services); } catch { /* ignore */ }
     window.location.href = `/contact?services=${encodeURIComponent(services)}`;
   };
-
-  const openPay = () => {
-    cancelAutoClose();      // otherwise the panel closes mid-typing
-    setPayError(null);
-    setPayOpen(true);
-  };
-
-  // Only ids and quantities go up. The server re-reads every price from
-  // catalog_items — a price posted from the browser is a browser-written invoice.
-  const startCheckout = async (intent: 'full' | 'deposit') => {
-    setPayBusy(true);
-    setPayError(null);
-    try {
-      const r = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: payName.trim(),
-          email: payEmail.trim(),
-          intent,
-          items: cart.map(i => ({ id: i.id, quantity: i.quantity ?? 1 })),
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok || !data.url) {
-        // 409 = the cart cannot be charged as-is (mixed retainer + one-time).
-        // 503 = Stripe keys not set. Both carry a message worth showing.
-        setPayError(data.error || 'Could not start checkout.');
-        setPayBusy(false);
-        return;
-      }
-      window.location.href = data.url;
-    } catch (e) {
-      console.error('[cart] checkout failed:', e);
-      setPayError('Could not reach the payment service. Please try again.');
-      setPayBusy(false);
-    }
-  };
-
-  const canSubmit =
-    payName.trim().length > 1 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(payEmail.trim()) &&
-    !payBusy;
 
   if (!cartOpen) return null;
 
@@ -350,74 +302,13 @@ export function CartSidebar() {
               <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', color: '#c9a96e' }}>${cartTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
             </div>
 
-            {!payOpen ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-                <button onClick={openPay} style={primaryBtn}>Checkout &amp; Pay →</button>
-                <button onClick={handleRequestAll} style={secondaryBtn}>Request a Quote Instead</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-                <input
-                  value={payName}
-                  onChange={e => setPayName(e.target.value)}
-                  onFocus={cancelAutoClose}
-                  placeholder="Your name"
-                  autoComplete="name"
-                  style={payField}
-                />
-                <input
-                  value={payEmail}
-                  onChange={e => setPayEmail(e.target.value)}
-                  onFocus={cancelAutoClose}
-                  placeholder="Email for the receipt"
-                  type="email"
-                  autoComplete="email"
-                  style={payField}
-                />
-
-                {payError && (
-                  <div style={{
-                    fontSize: '.6rem', color: '#e0a0a0', lineHeight: 1.6,
-                    background: 'rgba(180,80,80,.08)', border: '1px solid rgba(180,80,80,.2)',
-                    padding: '.6rem .7rem',
-                  }}>
-                    {payError}
-                    <button
-                      onClick={handleRequestAll}
-                      style={{
-                        display: 'block', marginTop: '.5rem', background: 'none', border: 'none',
-                        padding: 0, color: '#c9a96e', fontSize: '.58rem', cursor: 'pointer',
-                        textDecoration: 'underline', fontFamily: 'Montserrat, sans-serif',
-                      }}
-                    >
-                      Request a quote instead →
-                    </button>
-                  </div>
-                )}
-
-                {/* Both intents are offered; the server downgrades "full" to a
-                    deposit for any "From $X" line rather than charging a total
-                    nobody has agreed to yet. */}
-                <button
-                  onClick={() => startCheckout('full')}
-                  disabled={!canSubmit}
-                  style={{ ...primaryBtn, opacity: canSubmit ? 1 : .4, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
-                >
-                  {payBusy ? 'Starting…' : 'Pay Full Amount'}
-                </button>
-                <button
-                  onClick={() => startCheckout('deposit')}
-                  disabled={!canSubmit}
-                  style={{ ...secondaryBtn, opacity: canSubmit ? 1 : .4, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
-                >
-                  {payBusy ? 'Starting…' : 'Pay 50% Deposit'}
-                </button>
-              </div>
-            )}
+            <button onClick={handleRequestAll} style={{ ...primaryBtn, width: '100%' }}>
+              Continue → Get Your Quote
+            </button>
 
             <div style={{ marginTop: '.75rem', fontSize: '.52rem', color: 'rgba(240,232,216,.18)', textAlign: 'center', letterSpacing: '.06em', lineHeight: 1.7 }}>
-              50% on submission · 50% at delivery · USD<br />
-              Card payment is handled by Stripe
+              50% on acceptance · 50% at delivery · USD<br />
+              Pay by UPI, mobile money, bank transfer or crypto
             </div>
           </div>
         )}
@@ -439,15 +330,3 @@ const primaryBtn: React.CSSProperties = {
   cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', fontWeight: 500,
 };
 
-const payField: React.CSSProperties = {
-  width: '100%', background: '#0f0d0a', color: '#e8d5b7',
-  border: '1px solid rgba(201,169,110,.2)', padding: '.7rem .8rem',
-  fontSize: '.7rem', fontFamily: 'Montserrat, sans-serif', outline: 'none',
-};
-
-const secondaryBtn: React.CSSProperties = {
-  width: '100%', background: 'transparent', color: '#c9a96e',
-  border: '1px solid rgba(201,169,110,.25)', padding: '.85rem',
-  fontSize: '.62rem', letterSpacing: '.14em', textTransform: 'uppercase',
-  cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
-};
