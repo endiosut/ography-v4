@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { fireEvent } from '@/lib/modules/notify';
+import { events } from '@/lib/modules/notifications';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -131,6 +132,18 @@ export async function POST(req: NextRequest) {
       `https://${req.headers.get('host')}`;
 
     const actionUrl = paymentId ? `${origin}/portal/pay/${paymentId}` : `${origin}/portal`;
+
+    // In-app for both sides. This is the notification that actually lands
+    // today, because no email or WhatsApp provider is configured yet.
+    await events.agreementAccepted({
+      clientId: agreement.client_id,
+      clientName: client?.name || 'A client',
+      projectId: project?.id ?? null,
+      paymentId,
+      projectRef: project?.project_ref || agreement.agreement_ref || 'this project',
+      depositUsd: agreement.deposit_usd != null ? Number(agreement.deposit_usd) : null,
+      expiresAt,
+    });
 
     const result = await fireEvent({
       event: 'AGREEMENT_ACCEPTED',

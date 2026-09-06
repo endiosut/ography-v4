@@ -76,6 +76,32 @@ export default function PaymentMethodsPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [qrBusy, setQrBusy] = useState(false)
+  const [ratesBusy, setRatesBusy] = useState(false)
+
+  const refreshRates = async () => {
+    setRatesBusy(true); setError(null); setNotice(null)
+    try {
+      const res = await fetch('/api/admin/payments/refresh-rates', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Could not refresh rates.'); return }
+
+      type R = { label: string; currency: string; updated?: boolean; rate?: number; source?: string; reason?: string; skipped?: string }
+      const rows: R[] = data.results || []
+      const done = rows.filter(r => r.updated).map(r => `${r.label}: 1 USD = ${r.rate} ${r.currency} (${r.source})`)
+      const failed = rows.filter(r => r.updated === false).map(r => `${r.label}: ${r.reason}`)
+
+      setNotice(
+        (done.length ? `Updated — ${done.join(' · ')}.` : 'No rates needed updating.') +
+        (failed.length ? ` NOT updated: ${failed.join('; ')}.` : '')
+      )
+      await load()
+    } catch (e) {
+      console.error('[admin/methods] refreshRates:', e)
+      setError('Could not reach the rate service.')
+    } finally {
+      setRatesBusy(false)
+    }
+  }
   // Public URL for the QR currently on the draft, so the admin sees the actual
   // stored image rather than a filename they have to trust.
   const [qrPreview, setQrPreview] = useState<string | null>(null)
@@ -279,9 +305,17 @@ export default function PaymentMethodsPage() {
         )}
 
         {!draft && (
-          <button onClick={() => { setDraft(blank()); setError(null); setNotice(null) }} style={btnPrimary}>
-            + Add a payment rail
-          </button>
+          <div style={{ display: 'flex', gap: '.6rem', flexWrap: 'wrap' }}>
+            <button onClick={() => { setDraft(blank()); setError(null); setNotice(null) }} style={btnPrimary}>
+              + Add a payment rail
+            </button>
+            {/* Rates come from a live source, never typed by hand — a
+                hand-typed rate drifts, and the drift is money. This also runs
+                daily on a schedule; the button is for when you want it now. */}
+            <button onClick={refreshRates} disabled={ratesBusy} style={{ ...btnGhost, opacity: ratesBusy ? .5 : 1 }}>
+              {ratesBusy ? 'Fetching live rates…' : '↻ Refresh FX rates'}
+            </button>
+          </div>
         )}
 
         {draft && (

@@ -14,6 +14,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { enqueueAndTry } from '@/lib/modules/outbox';
+import { events } from '@/lib/modules/notifications';
 import { receiptHtml, receiptText, receiptSubject } from '@/lib/modules/receipt';
 import { fireEvent } from '@/lib/modules/notify';
 import { SUPPORT_EMAIL } from '@/lib/support';
@@ -101,6 +102,18 @@ export async function POST(req: NextRequest) {
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
     if (decision === 'rejected') {
+      // Tell the client in-app, not only in the review note they have to go
+      // looking for. This works even with no email provider configured.
+      const { data: rejPay } = await sb
+        .from('payments').select('client_id, project_id').eq('id', proof.payment_id).maybeSingle();
+      if (rejPay?.client_id) {
+        await events.proofRejected({
+          clientId: rejPay.client_id,
+          projectId: rejPay.project_id,
+          paymentId: proof.payment_id,
+          reason: String(note || '').trim(),
+        });
+      }
       return NextResponse.json({ ok: true, decision, receipt: null });
     }
 
@@ -228,6 +241,17 @@ export async function POST(req: NextRequest) {
       queued.whatsapp = { queued: true, duplicate: r.duplicate };
     } else {
       queued.whatsapp = { queued: false, reason: 'no phone on file' };
+    }
+
+    // In-app confirmation, independent of whether any email actually sends.
+    if (payment.client_id) {
+      await events.paymentApproved({
+        clientId: payment.client_id,
+        projectId: project?.id ?? null,
+        paymentId: payment.id,
+        projectRef: receipt.projectRef,
+        amountUsd: receipt.amountUsd,
+      });
     }
 
     await fireEvent({

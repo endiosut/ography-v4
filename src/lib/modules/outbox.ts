@@ -16,6 +16,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail, sendWhatsApp, type DeliveryResult } from './deliver';
+import { events } from './notifications';
 
 export type OutboxChannel = 'email' | 'whatsapp' | 'telegram' | 'webhook';
 
@@ -232,7 +233,24 @@ export async function drain(limit = 20): Promise<DrainSummary> {
       })
       .eq('id', row.id);
 
-    if (exhausted) summary.dead++; else summary.retrying++;
+    if (exhausted) {
+      summary.dead++;
+      // A receipt that gave up after 5 attempts is a client who paid and heard
+      // nothing. That has to reach a human, not just a log line.
+      const { data: ctx } = await sb
+        .from('notification_outbox')
+        .select('payment_id, project_id')
+        .eq('id', row.id)
+        .maybeSingle();
+      await events.deliveryFailed({
+        paymentId: ctx?.payment_id ?? null,
+        projectId: ctx?.project_id ?? null,
+        channel: row.channel,
+        reason: (result.error ?? 'send failed').slice(0, 200),
+      });
+    } else {
+      summary.retrying++;
+    }
   }
 
   return summary;

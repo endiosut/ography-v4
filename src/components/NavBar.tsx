@@ -4,6 +4,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CartIcon } from '@/context/CartContext';
+import NotificationBell from '@/components/NotificationBell';
 import { AI_STUDIO_ENABLED } from '@/lib/features';
 
 const ADMIN_EMAIL = 'endiosut.eo@gmail.com';
@@ -152,6 +153,10 @@ export default function NavBar({ user: userProp, onSignOut }: NavBarProps) {
         ) : (
           <Link href="/portal" style={linkStyle('/portal')}>Portal</Link>
         )}
+
+        {/* Only for signed-in clients: the query is RLS-scoped to their own
+            rows, and an anonymous visitor has nothing to be notified about. */}
+        {user && <NotificationBell audience={isAdmin ? 'admin' : 'client'} />}
 
         <CartIcon />
 

@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import NotificationBell from '@/components/NotificationBell'
 
 const nav = [
   { href: '/admin',                label: 'Dashboard',  icon: '◈' },
@@ -19,8 +20,12 @@ export default function AdminSidebar() {
   const path = usePathname()
   return (
     <aside style={{ width: 220, minHeight: '100vh', background: 'var(--dark)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50 }}>
-      <div style={{ padding: '1.5rem 1.25rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src="/logo.svg" alt="OGraphy" style={{ width: 100, height: 'auto', objectFit: 'contain', display: 'block' }} />
+      {/* The admin surface does not render NavBar, so without this the admin
+          would have no notification centre at all — and the admin is the one
+          who has to act on proofs and stuck payments. */}
+      <div style={{ padding: '1.5rem 1.25rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.5rem' }}>
+        <img src="/logo.svg" alt="OGraphy" style={{ width: 88, height: 'auto', objectFit: 'contain', display: 'block' }} />
+        <NotificationBell audience="admin" tone="admin" />
       </div>
       <nav style={{ flex: 1, padding: '.75rem' }}>
         {nav.map(({ href, label, icon }) => {
