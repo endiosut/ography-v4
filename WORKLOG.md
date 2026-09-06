@@ -8,6 +8,77 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-06 (f) · Claude Opus 5 · Outbox, link integrity, CI — AND A BROKEN DEPLOY HOOK
+
+```
+ITEM        Retry/history for sends, fan-out, payment-link creation mechanism,
+            link uniqueness/immutability. Repo made private by owner.
+
+BLOCKER     ** VERCEL IS NO LONGER DEPLOYING FROM GITHUB **
+            Commit 85e598a is on origin/main (verified: local and origin HEAD
+            match). Vercel's latest deployment is still babe8d3, the commit
+            BEFORE it. No queued, building or errored deployment exists.
+            The repo was flipped to Private between those two commits
+            (GitHub API for an unauthenticated caller now returns 404).
+            Flipping to private revokes the Vercel GitHub App's repository
+            access unless private-repo access is re-granted, so pushes no
+            longer reach Vercel.
+            => Everything below is committed and builds locally, but is NOT
+               live. Fix the integration before trusting production.
+
+ROOT CAUSE  Retry/history: sends fired once; a transient failure lost the
+            message and left only a log line. Same failure mode as the dead
+            n8n webhook.
+            Link creation: a window could only ever be opened at ONE moment,
+            agreement acceptance. Balance payments, admin-made payments, the 8
+            historical rows and clients who used both renewals had no route.
+            Link integrity: token already had UNIQUE, but nothing enforced one
+            ACTIVE link per payment, and nothing stopped an UPDATE repointing a
+            token at a different payment.
+
+CHANGE      DB 012 — payment_links_one_active_per_payment (partial unique);
+                     payment_links_immutable() trigger on token/payment_id/
+                     project_id; notification_outbox + dedupe/due indexes + RLS.
+            lib/modules/outbox.ts   enqueue/drain, backoff 1m-5m-25m-2h-10h,
+                                    row claimed by conditional update, 23505 on
+                                    dedupe treated as SUCCESS not error.
+            api/outbox/drain        Vercel Cron OR ?key=CRON_SECRET OR
+                                    in-process. Fails CLOSED with no secret.
+            api/admin/payments/issue-link  open/reopen a window, notify client.
+            admin/payments          "Issue Link" button; disabled on null amount.
+            admin/payments/proofs   reports OUTBOX status, not hoped-for status.
+            .github/workflows       replaced the webpack starter template.
+
+STATUS      fixed-local / committed / NOT DEPLOYED (see BLOCKER)
+
+VERIFY      Immutability was proven, not assumed — a DO block attempted
+              update payment_links set token = gen_random_uuid()
+            and the trigger raised; the block re-raises if it does NOT.
+            Applied-state re-query: one_active_idx 1 · immutable_trigger 1 ·
+            outbox_table 1 · outbox_policies 1 · outbox_indexes 3.
+            Local: tsc clean, next build clean, all routes in the route table.
+            Production probes still return 404 for /api/outbox/drain and
+            /api/admin/payments/issue-link — consistent with the BLOCKER, not
+            with a code fault.
+
+NOTE        The old CI workflow (`npx webpack`, node 18/20) could not have
+            passed once — no webpack in this project, and it needs node 24.x.
+            Replaced with npm ci + tsc + build. Lint left NON-blocking: 71
+            pre-existing errors would have put CI back to red-on-every-push.
+
+IMPORTANT   Making the repo private does NOT hide NEXT_PUBLIC_SUPABASE_ANON_KEY.
+            That key is shipped in the browser bundle of the live site and can
+            be read by anyone who opens devtools. RLS is the only thing
+            protecting the data — which is why migration 010 mattered and why
+            "the repo is private now" is not a substitute for it.
+
+COMMIT      d58879e, 85e598a
+DEPLOY      NONE — integration broken
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-06 (e) · Claude Opus 5 · Security lock, payment windows, receipts
 
 ```
