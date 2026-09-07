@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
         renewals_used: 0,
         is_active: true,
       })
-      .select('id, token, expires_at, window_minutes, max_renewals')
+      .select('id, expires_at, window_minutes, max_renewals')
       .maybeSingle();
 
     if (linkErr || !link) {
@@ -165,10 +165,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // `token` is deliberately NOT returned.
+    //
+    // payment_links.token exists in the schema but no route anywhere consumes
+    // it — /portal/pay/[paymentId] authenticates by session and is filtered by
+    // RLS, so the token is not a credential and grants nothing. Handing it back
+    // would advertise a shareable magic-link capability that does not exist and
+    // invite someone to send it to a client who then cannot use it.
     return NextResponse.json({
       ok: true,
       payUrl,
-      token: link.token,
       expiresAt: link.expires_at,
       windowMinutes: link.window_minutes,
       maxRenewals: link.max_renewals,

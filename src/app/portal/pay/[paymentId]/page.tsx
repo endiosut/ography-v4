@@ -295,6 +295,45 @@ export default function PayPage() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [paymentId]);
 
+  // ── LEAVING THIS PAGE IS THE NORMAL PATH, NOT A MISTAKE ──────────────────
+  //
+  // Paying by UPI REQUIRES leaving: the "Open UPI app" button deep-links out of
+  // the browser, and on a phone the client has to switch apps to pay at all. A
+  // "do not leave this page" warning would therefore be both false and harmful
+  // — it would scare people out of the only action that completes the payment.
+  //
+  // Nothing about the window depends on staying: expires_at lives in the
+  // database and is re-read on every load. The ONLY thing lost by leaving is
+  // in-progress typing, because that is React state. So persist the draft
+  // rather than blocking the exit.
+  //
+  // The file itself cannot be persisted — a File handle is not serialisable —
+  // so the UI says so rather than silently dropping it.
+  const draftKey = `og_pay_draft_${paymentId}`;
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (!raw) return;
+      const d = JSON.parse(raw) as { chosen?: string | null; reference?: string };
+      if (d.chosen) setChosen(d.chosen);
+      if (d.reference) setReference(d.reference);
+    } catch (e) {
+      console.error('[pay] draft restore failed:', e);
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    // Only persist once there is something worth restoring, so an untouched
+    // page does not leave litter in storage.
+    if (!chosen && !reference) return;
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify({ chosen, reference }));
+    } catch (e) {
+      console.error('[pay] draft persist failed:', e);
+    }
+  }, [chosen, reference, draftKey]);
+
   // QR lives in `payment-qr` — public to read, admin-only to write.
   //
   // It used to be read from `catalog-images`, which grants INSERT/UPDATE/DELETE
@@ -412,6 +451,9 @@ export default function PayPage() {
         );
         return;
       }
+      // The draft has served its purpose; leaving it would repopulate the form
+      // on a later visit with a reference that has already been submitted.
+      try { window.localStorage.removeItem(draftKey); } catch { /* ignore */ }
       await load();
     } catch (e) {
       console.error('[pay] submit threw:', e);
@@ -519,6 +561,15 @@ export default function PayPage() {
               <span style={{ opacity: .7 }}>
                 {' '}· extended {renewalsUsed} of {maxRenewals}
               </span>
+            )}
+            {!countdown.expired && (
+              // Deliberately the OPPOSITE of "do not leave this page". Paying by
+              // UPI means switching to another app; a warning here would tell
+              // people not to do the one thing that completes the payment.
+              <div style={{ marginTop: '.35rem', fontSize: '.62rem', color: 'rgba(232,213,183,.35)', letterSpacing: 0, lineHeight: 1.6 }}>
+                Safe to leave this page — go to your payment app and come back.
+                The countdown runs on our side, and what you have typed is kept.
+              </div>
             )}
           </div>
         )}
