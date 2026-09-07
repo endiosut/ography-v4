@@ -8,6 +8,104 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-07 (c) · Claude Opus 5 · End-to-end payment run + evidence
+
+```
+ITEM        Run a real payment through end to end and report evidence.
+
+PRECONDITIONS MEASURED FIRST (not assumed)
+            QR images    BOTH uploaded and publicly readable
+                         UPI     200 image/jpeg 163,946 bytes
+                         Binance 200 image/jpeg  72,858 bytes
+            UPI rate     94.547339 (owner had run the refresh button)
+            CRON_SECRET  NOT SET — /api/outbox/drain?key=... returned 401
+            => Resend almost certainly unset too, so no receipt can leave.
+
+THE RUN     Test identity endiosut.eo+e2e@gmail.com, one fixed-price line
+            (Business Card Set, $65). Every step through the REAL production
+            routes except where noted.
+
+  1 POST /api/contact                          200
+      -> client f290f72c · project 189267f4 · agreement 49959e30
+      agreements_recalc priced it: subtotal 65.00, total 65.00,
+      deposit_pct 50, deposit 32.50, balance 32.50
+      refs OG-A-2026-007 / OG-2026-028
+
+  2 UPDATE agreements SET status='accepted'    (the exact write the browser
+                                                makes when the client signs)
+      agreements_on_accept did all three jobs:
+        projects.total_amount_usd 65.00 / balance 65.00
+        payments row: deposit 32.50 status=pending
+        project_events: AGREEMENT_ACCEPTED
+
+  3 POST /api/agreements/accepted              200
+      {"ok":true,"notified":false,"notifyStatus":404,
+       "paymentId":"a8e77d93...","expiresAt":"2026-09-07T16:51:31Z"}
+      notified:false + 404 is the HONEST reporting working — n8n is still a
+      dead workspace and the route says so instead of claiming success.
+      payment_links: window 30min, renewals 0/2, active=true
+      notifications: admin "Agreement signed — OG-2026-028"
+                     client "Deposit due — $32.50" + the window expiry time
+
+  4 CONSTRAINTS PROVEN, not assumed (DO blocks that re-raise on success):
+      renewals_used=3 against max_renewals=2   -> REFUSED
+      second active link for the same payment  -> REFUSED
+
+  5 INSERT payment_proofs with file_path NULL  -> ACCEPTED
+      This is the exact shape that used to die on 23502. Reference-only proof
+      now works. Trigger fired both notifications with real content:
+        admin  "E2E Test Client says they sent $32.50 by UPI / Paytm (India)"
+        client "We have your payment proof"
+
+  6 APPROVAL — auth gate verified, then SIMULATED.
+      POST /api/admin/proofs/review unauthenticated -> 401 "Not signed in"
+      I cannot hold an admin browser session, so the route's exact writes were
+      run directly. Resulting state:
+        payment paid · proof approved · project payment_received
+        link deactivated · brief opened pending
+
+  7 RECEIPT QUEUE
+      1 outbox row, status pending, attempts 0
+      subject "Deposit received · OG-2026-028 · $32.50"
+      A SECOND insert with the same dedupe key created NO second row.
+      It never sent: RESEND_API_KEY is unset, so nothing drained. Correct
+      behaviour — it queues rather than pretending.
+
+BUG FOUND MID-RUN AND FIXED
+            Probing /api/admin/proofs/review unauthenticated returned
+              400 {"error":"A rejection needs a reason."}
+            Validation ran BEFORE the auth check, so an anonymous caller
+            learned the route exists and the shape of its payload. No data
+            leaked, but an admin route should tell an anonymous caller exactly
+            one thing. Reordered to session -> is_admin -> validate in
+            proofs/review and issue-link. Verified live: both now return
+            "Not signed in" for deliberately invalid payloads.
+            /api/payments/extend left alone — it is a client route, not a
+            privileged one.
+
+CLEANUP     Every row this run created was deleted. Verified 0 remaining for
+            client / project / agreement / payment / outbox.
+            The 8 historical test payments are UNTOUCHED, per instruction.
+
+FOUND, NOT MINE — the owner's own earlier runs are still live:
+            OG-2026-024  $72.50 deposit  pending  NO payment_link at all
+            OG-2026-025  $600.00 deposit pending  NO payment_link at all
+            OG-2026-027  $22.50 deposit  pending  window EXPIRED 919 min ago,
+                                                  renewals 0/2, no proof,
+                                                  no feedback submitted
+            024 and 025 predate the link-creation code, so they have no window
+            and the pay page shows them with no countdown (null expiry reads as
+            "no timer", not "expired" — they are still payable). The admin
+            "Issue Link" button is the lever for all three.
+
+STATUS      verified-deployed
+
+COMMIT      35894e4
+DIRTY TREE  no
+```
+
+---
+
 ## 2026-09-07 (b) · Claude Opus 5 · Deploy unblocked — MY misdiagnosis, corrected
 
 ```
