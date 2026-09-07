@@ -41,10 +41,9 @@ export async function POST(req: NextRequest) {
   try {
     const { paymentId, windowMinutes, notify } = await req.json();
 
-    if (typeof paymentId !== 'string' || !UUID_RE.test(paymentId)) {
-      return NextResponse.json({ error: 'paymentId required' }, { status: 400 });
-    }
-
+    // Auth BEFORE validation: an anonymous caller should learn exactly one
+    // thing from an admin route — that they are not signed in — not the shape
+    // of its payload.
     const cookieStore = await cookies();
     const authed = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +57,10 @@ export async function POST(req: NextRequest) {
       (user.email || '').toLowerCase() === adminEmail() ||
       (user.app_metadata as { role?: string } | undefined)?.role === 'admin';
     if (!isAdmin) return NextResponse.json({ error: 'Not permitted' }, { status: 403 });
+
+    if (typeof paymentId !== 'string' || !UUID_RE.test(paymentId)) {
+      return NextResponse.json({ error: 'paymentId required' }, { status: 400 });
+    }
 
     const sb = serviceClient();
 

@@ -39,18 +39,14 @@ export async function POST(req: NextRequest) {
   try {
     const { proofId, decision, note } = await req.json();
 
-    if (typeof proofId !== 'string' || !UUID_RE.test(proofId)) {
-      return NextResponse.json({ error: 'proofId required' }, { status: 400 });
-    }
-    if (decision !== 'approved' && decision !== 'rejected') {
-      return NextResponse.json({ error: 'decision must be approved or rejected' }, { status: 400 });
-    }
-    // A rejection the client cannot act on is worse than no rejection.
-    if (decision === 'rejected' && !String(note || '').trim()) {
-      return NextResponse.json({ error: 'A rejection needs a reason.' }, { status: 400 });
-    }
-
-    // ── who is calling ──────────────────────────────────────────────────────
+    // ── who is calling — BEFORE any input validation ────────────────────────
+    //
+    // Reordered 07 Sep 2026. Validation used to run first, so an
+    // unauthenticated caller probing this endpoint got "A rejection needs a
+    // reason." — a 400 that confirms the route exists, tells them the shape of
+    // the payload, and lets them map the API without ever being asked to sign
+    // in. Nothing sensitive leaked, but an anonymous caller should learn
+    // exactly one thing from an admin route: that they are not signed in.
     const cookieStore = await cookies();
     const authed = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,6 +65,18 @@ export async function POST(req: NextRequest) {
       (user.email || '').toLowerCase() === adminEmail() ||
       (user.app_metadata as { role?: string } | undefined)?.role === 'admin';
     if (!isAdmin) return NextResponse.json({ error: 'Not permitted' }, { status: 403 });
+
+    // ── now validate the payload ────────────────────────────────────────────
+    if (typeof proofId !== 'string' || !UUID_RE.test(proofId)) {
+      return NextResponse.json({ error: 'proofId required' }, { status: 400 });
+    }
+    if (decision !== 'approved' && decision !== 'rejected') {
+      return NextResponse.json({ error: 'decision must be approved or rejected' }, { status: 400 });
+    }
+    // A rejection the client cannot act on is worse than no rejection.
+    if (decision === 'rejected' && !String(note || '').trim()) {
+      return NextResponse.json({ error: 'A rejection needs a reason.' }, { status: 400 });
+    }
 
     const sb = serviceClient();
 
