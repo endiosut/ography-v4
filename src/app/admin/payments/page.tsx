@@ -19,6 +19,13 @@ export default function PaymentsPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  type AgreementRow = {
+    id: string; status: string
+    total_usd: number | null; balance_usd: number | null
+    project_ids: string[]
+  }
+  const [agreements, setAgreements] = useState<AgreementRow[]>([])
+
   const issueLink = async (id: string) => {
     setBusyId(id); setError(null); setNotice(null)
     try {
@@ -48,17 +55,85 @@ export default function PaymentsPage() {
   }
 
   useEffect(() => {
-    supabase.from('payments')
-      .select('*, clients(name), projects(project_ref,service_name)')
-      .order('created_at', {ascending:false})
-      .then(({data}) => { setPayments(data || []); setLoading(false) })
+    (async () => {
+      const [payRes, agRes] = await Promise.all([
+        supabase.from('payments')
+          .select('*, clients(name), projects(project_ref,service_name)')
+          .order('created_at', { ascending: false }),
+        // Agreements carry the CONTRACTED totals. Without them the page can
+        // only see money that has already been turned into an invoice, which
+        // is precisely the half of the picture that was missing.
+        supabase.from('agreements').select('id,status,total_usd,balance_usd'),
+      ])
+
+      if (payRes.error) console.error('[admin/payments] payments:', payRes.error.message)
+      if (agRes.error) console.error('[admin/payments] agreements:', agRes.error.message)
+
+      const pays = payRes.data || []
+      setPayments(pays)
+
+      // Map each agreement to the projects it priced, so a balance row can be
+      // matched back to its agreement.
+      const { data: projs } = await supabase.from('projects').select('id,agreement_id')
+      const byAgreement = new Map<string, string[]>()
+      ;(projs || []).forEach(p => {
+        if (!p.agreement_id) return
+        byAgreement.set(p.agreement_id, [...(byAgreement.get(p.agreement_id) || []), p.id])
+      })
+
+      setAgreements((agRes.data || []).map(a => ({
+        id: a.id, status: a.status,
+        total_usd: a.total_usd, balance_usd: a.balance_usd,
+        project_ids: byAgreement.get(a.id) || [],
+      })))
+
+      setLoading(false)
+    })()
   }, [])
 
   const visible = filter === 'all' ? payments : payments.filter(p => p.status === filter)
 
-  const totalCollected = payments.filter(p => p.status === 'paid').reduce((s,p) => s + (p.amount_usd||0), 0)
-  const pending = payments.filter(p => p.status === 'pending').reduce((s,p) => s + (p.amount_usd||0), 0)
-  const thisMonth = payments.filter(p => p.status === 'paid' && p.paid_at && new Date(p.paid_at).getMonth() === new Date().getMonth()).reduce((s,p) => s + (p.amount_usd||0), 0)
+  // ── THE MONEY, SPLIT BY HOW REAL IT IS ────────────────────────────────────
+  //
+  // The old summary showed "Total Collected / Pending / This Month", which
+  // invites exactly the drift the owner was worried about: reading contracted
+  // money as money you have. These four buckets are deliberately ordered from
+  // certain to speculative, and they never add up to a single headline number,
+  // because adding them would recreate the problem.
+  const collected = payments
+    .filter(p => p.status === 'paid')
+    .reduce((s, p) => s + (p.amount_usd || 0), 0)
+
+  const thisMonth = payments
+    .filter(p => p.status === 'paid' && p.paid_at &&
+      new Date(p.paid_at).getMonth() === new Date().getMonth() &&
+      new Date(p.paid_at).getFullYear() === new Date().getFullYear())
+    .reduce((s, p) => s + (p.amount_usd || 0), 0)
+
+  // ASKED FOR: an invoice exists and carries an amount. This is the only
+  // "owed to you" figure that is actually chaseable today.
+  const invoiced = payments
+    .filter(p => p.status === 'pending' && p.amount_usd != null)
+    .reduce((s, p) => s + (p.amount_usd || 0), 0)
+
+  // CONTRACTED, NOT YET INVOICED: the second instalment on accepted agreements
+  // where the work has not been delivered, so no balance payment exists yet.
+  // Real, but not collectable until you deliver.
+  const contractedNotInvoiced = agreements
+    .filter(a => a.status === 'accepted')
+    .reduce((s, a) => {
+      const hasBalanceRow = payments.some(
+        p => p.project_id && a.project_ids.includes(p.project_id) && p.milestone === 'balance')
+      return hasBalanceRow ? s : s + Number(a.balance_usd || 0)
+    }, 0)
+
+  // QUOTED ONLY: sent, never accepted. May never become anything.
+  const quotedUnaccepted = agreements
+    .filter(a => a.status === 'sent')
+    .reduce((s, a) => s + Number(a.total_usd || 0), 0)
+
+  // Rows that can never be collected as they stand — no amount to ask for.
+  const unusable = payments.filter(p => p.status === 'pending' && p.amount_usd == null).length
 
   // Rewritten 06 Sep 2026. Was:
   //
@@ -127,19 +202,35 @@ export default function PaymentsPage() {
           </div>
         )}
 
-        {/* Summary */}
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'1px', background:'var(--border)', border:'1px solid var(--border)', marginBottom:'1.5rem'}}>
+        {/* Summary — four buckets, ordered from certain to speculative.
+            They are deliberately NOT summed into one headline: adding money you
+            hold to money you merely hope for is the whole failure mode. */}
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'1px', background:'var(--border)', border:'1px solid var(--border)', marginBottom:'.75rem'}}>
           {[
-            {label:'Total Collected', value:`$${totalCollected.toLocaleString()}`, color:'var(--cream)'},
-            {label:'Pending', value:`$${pending.toLocaleString()}`, color:'#f59e0b'},
-            {label:'This Month', value:`$${thisMonth.toLocaleString()}`, color:'#27ae60'},
-          ].map(({label,value,color}) => (
+            {label:'In hand · collected',      value:`$${collected.toLocaleString()}`,             color:'#27ae60',
+             note:`$${thisMonth.toLocaleString()} of it this month`},
+            {label:'Invoiced · chase this',    value:`$${invoiced.toLocaleString()}`,              color:'#f59e0b',
+             note:'asked for, not yet received'},
+            {label:'Contracted · not invoiced',value:`$${contractedNotInvoiced.toLocaleString()}`, color:'var(--cream-muted)',
+             note:'second instalments — deliver the work to bill it'},
+            {label:'Quoted · unaccepted',      value:`$${quotedUnaccepted.toLocaleString()}`,      color:'var(--cream-dim)',
+             note:'may never happen — do not count it'},
+          ].map(({label,value,color,note}) => (
             <div key={label} style={{background:'var(--dark)', padding:'1.25rem'}}>
               <div style={{fontSize:'.55rem', letterSpacing:'.14em', textTransform:'uppercase', color:'var(--cream-dim)', marginBottom:'.4rem'}}>{label}</div>
               <div style={{fontFamily:'IBM Plex Mono,monospace', fontSize:'1.6rem', color}}>{value}</div>
+              <div style={{fontSize:'.5rem', color:'var(--cream-dim)', marginTop:'.45rem', lineHeight:1.5}}>{note}</div>
             </div>
           ))}
         </div>
+
+        {unusable > 0 && (
+          <div style={{fontSize:'.62rem', color:'var(--cream-dim)', marginBottom:'1.25rem', lineHeight:1.6}}>
+            {unusable} pending payment{unusable > 1 ? 's carry' : ' carries'} no amount, so
+            {unusable > 1 ? ' they are' : ' it is'} counted in none of the figures above —
+            there is nothing to ask for until an amount is set.
+          </div>
+        )}
 
         {/* Filter */}
         <div style={{display:'flex', gap:'.4rem', marginBottom:'1.25rem'}}>
