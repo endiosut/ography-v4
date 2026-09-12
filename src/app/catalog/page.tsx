@@ -31,7 +31,25 @@ type CatalogItem = {
   sort_order?: number;
 };
 
-// Fallback items in case Supabase connection is unreachable
+const SLUG_MAP: Record<string, string> = {
+  'Echo Launch Kit': '/catalog/echo_launch_kit.svg',
+  'Brand Amplification': '/catalog/brand_amplification.svg',
+  'Fractional Creative Partner': '/catalog/fractional_creative_partner.svg',
+  'Social Media Starter Pack': '/catalog/social_media_starter_pack.svg',
+  'UGC Asset Kit': '/catalog/ugc_asset_kit.svg',
+  'Monthly Content Bundle': '/catalog/monthly_content_bundle.svg',
+  'Photo Retouch Pack': '/catalog/photo_retouch_pack.svg',
+  'Custom Lightroom Preset Pack': '/catalog/custom_lightroom_preset_pack.svg',
+  'Event Pull-Up Banner': '/catalog/event_pull_up_banner.svg',
+  'Business Card Set': '/catalog/business_card_set.svg',
+  'Framed Wall Print': '/catalog/framed_wall_print.svg',
+  'Event Identity Kit': '/catalog/event_identity_kit.svg',
+  'Pitch Deck Design': '/catalog/pitch_deck_design.svg',
+  'Business Proposal': '/catalog/business_proposal.svg',
+  'Student CV & Portfolio': '/catalog/student_cv_portfolio.svg',
+  'Same-Day Event Edits': '/catalog/same_day_event_edits.svg',
+};
+
 // FALLBACK_ITEMS removed 13 Aug 2026.
 //
 // It was a 16-item hardcoded array with synthetic ids '1'..'16', rendered
@@ -140,7 +158,7 @@ export default function CatalogPage() {
             turnaround: i.turnaround || i.turnaround_time || '',
             turnaround_time: i.turnaround || i.turnaround_time || '',
             stripe_link: i.stripe_link || undefined,
-            image_url: i.image_url,
+            image_url: SLUG_MAP[i.name] || i.image_url || null,
             is_active: i.is_active,
             is_featured: i.is_featured,
             sort_order: i.sort_order,
@@ -311,8 +329,8 @@ export default function CatalogPage() {
                 {/* Image placeholder */}
                 <div style={{
                   width: '100%', aspectRatio: '16/9', borderRadius: 4,
-                  background: item.image_url ? 'transparent' : 'rgba(201,169,110,.04)',
-                  border: '1px dashed rgba(201,169,110,.1)',
+                  background: item.image_url ? '#0d0b08' : 'rgba(201,169,110,.04)',
+                  border: item.image_url ? '1px solid rgba(201,169,110,.18)' : '1px dashed rgba(201,169,110,.1)',
                   marginBottom: '1.25rem', overflow: 'hidden',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   minHeight: 80,

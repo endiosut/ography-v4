@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675">
+
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#1c1811" />
+      <stop offset="60%" stop-color="#0c0a07" />
+      <stop offset="100%" stop-color="#050403" />
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5e4" />
+      <stop offset="25%" stop-color="#c9a96e" />
+      <stop offset="50%" stop-color="#99783d" />
+      <stop offset="75%" stop-color="#eddac0" />
+      <stop offset="100%" stop-color="#7a5822" />
+    </linearGradient>
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(201,169,110,0.65)" />
+      <stop offset="50%" stop-color="rgba(240,232,216,0.2)" />
+      <stop offset="100%" stop-color="rgba(201,169,110,0.5)" />
+    </linearGradient>
+    <linearGradient id="darkSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181510" />
+      <stop offset="100%" stop-color="#0d0b08" />
+    </linearGradient>
+    <filter id="shadowHeavy" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity="0.85" />
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+    <filter id="shadowCard" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity="0.75" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c9a96e" flood-opacity="0.1" />
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(201,169,110,0.03)" stroke-width="1" />
+    </pattern>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bgGrad)" />
+  <rect width="1200" height="675" fill="url(#grid)" />
+  <ellipse cx="600" cy="340" rx="420" ry="240" fill="#c9a96e" opacity="0.035" filter="blur(70px)" />
+
+
+  <g transform="translate(60, 60)">
+    <text x="0" y="0" font-family="'IBM Plex Mono', monospace" font-size="10" letter-spacing="1.5" fill="#c9a96e" opacity="0.45">13 // EDITORIAL · 20 INVESTOR SLIDES</text>
+  </g>
+
+  <!-- 3 Isometric Investor Deck Slides Floating -->
+  <g transform="translate(160, 115)">
+    <!-- Slide 1 (Back Left) -->
+    <g transform="translate(0, 70) rotate(-6)" filter="url(#shadowHeavy)">
+      <rect width="360" height="202" rx="6" fill="#100e0a" stroke="url(#goldBorder)" stroke-width="1" />
+      <text x="25" y="40" font-family="'Montserrat', sans-serif" font-size="7.5" letter-spacing="2" fill="#c9a96e">01. THE PROBLEM</text>
+      <text x="25" y="70" font-family="'Cormorant Garamond', serif" font-size="20" fill="#f0e8d8">Fragmented Creator Economy</text>
+      <rect x="25" y="95" width="310" height="60" rx="3" fill="#080705" />
+    </g>
+
+    <!-- Slide 2 (Center Hero Slide - Traction Curve) -->
+    <g transform="translate(260, 30) rotate(2)" filter="url(#shadowHeavy)">
+      <rect width="400" height="225" rx="6" fill="#16130d" stroke="url(#goldGrad)" stroke-width="1.5" />
+      
+      <!-- Slide Header -->
+      <text x="30" y="40" font-family="'Montserrat', sans-serif" font-size="8" letter-spacing="2" fill="#c9a96e">TRACTION &amp; REVENUE</text>
+      <text x="30" y="65" font-family="'Cormorant Garamond', serif" font-size="22" font-weight="300" fill="#f0e8d8">$1.2M ARR Run Rate</text>
+      
+      <!-- Growth Chart -->
+      <g transform="translate(30, 85)">
+        <rect width="340" height="110" rx="4" fill="#080705" />
+        <path d="M 20 90 Q 120 75 200 45 T 320 15" fill="none" stroke="url(#goldGrad)" stroke-width="3" />
+        <!-- Data Dots -->
+        <circle cx="120" cy="72" r="4" fill="#c9a96e" />
+        <circle cx="200" cy="45" r="4" fill="#c9a96e" />
+        <circle cx="320" cy="15" r="5" fill="#fff" />
+        <text x="260" y="38" font-family="'Montserrat', sans-serif" font-size="8" font-weight="600" fill="#c9a96e">+340% YoY</text>
+      </g>
+    </g>
+
+    <!-- Slide 3 (Front Right - Market Opportunity) -->
+    <g transform="translate(460, 150) rotate(8)" filter="url(#shadowHeavy)">
+      <rect width="380" height="213" rx="6" fill="#120f0b" stroke="url(#goldBorder)" stroke-width="1" />
+      <text x="25" y="40" font-family="'Montserrat', sans-serif" font-size="8" letter-spacing="2" fill="#c9a96e">03. MARKET OPPORTUNITY</text>
+      <text x="25" y="70" font-family="'Cormorant Garamond', serif" font-size="22" fill="#f0e8d8">$250B TAM Worldwide</text>
+      <!-- Circular TAM Breakdown -->
+      <circle cx="100" cy="135" r="40" fill="none" stroke="url(#goldGrad)" stroke-width="6" />
+      <circle cx="100" cy="135" r="40" fill="none" stroke="rgba(201,169,110,0.2)" stroke-dasharray="40,160" stroke-width="6" />
+      <text x="180" y="130" font-family="'Montserrat', sans-serif" font-size="8" fill="#f0e8d8">Tier 1 Founder Ready</text>
+      <text x="180" y="148" font-family="'Montserrat', sans-serif" font-size="7" fill="#c9a96e">20 Presentation-Ready Slides</text>
+    </g>
+  </g>
+
+  <g transform="translate(60, 560)">
+    <rect width="230" height="42" rx="21" fill="rgba(15,13,10,0.85)" stroke="rgba(201,169,110,0.35)" stroke-width="1" filter="url(#shadowCard)" />
+    <circle cx="24" cy="21" r="5" fill="#c9a96e" />
+    <text x="40" y="25" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" font-weight="500" fill="#f0e8d8">PITCH DECK DESIGN</text>
+  </g>
+
+</svg>

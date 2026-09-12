@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675">
+
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#1c1811" />
+      <stop offset="60%" stop-color="#0c0a07" />
+      <stop offset="100%" stop-color="#050403" />
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5e4" />
+      <stop offset="25%" stop-color="#c9a96e" />
+      <stop offset="50%" stop-color="#99783d" />
+      <stop offset="75%" stop-color="#eddac0" />
+      <stop offset="100%" stop-color="#7a5822" />
+    </linearGradient>
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(201,169,110,0.65)" />
+      <stop offset="50%" stop-color="rgba(240,232,216,0.2)" />
+      <stop offset="100%" stop-color="rgba(201,169,110,0.5)" />
+    </linearGradient>
+    <linearGradient id="darkSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181510" />
+      <stop offset="100%" stop-color="#0d0b08" />
+    </linearGradient>
+    <filter id="shadowHeavy" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity="0.85" />
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+    <filter id="shadowCard" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity="0.75" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c9a96e" flood-opacity="0.1" />
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(201,169,110,0.03)" stroke-width="1" />
+    </pattern>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bgGrad)" />
+  <rect width="1200" height="675" fill="url(#grid)" />
+  <ellipse cx="600" cy="340" rx="420" ry="240" fill="#c9a96e" opacity="0.035" filter="blur(70px)" />
+
+
+  <g transform="translate(60, 60)">
+    <text x="0" y="0" font-family="'IBM Plex Mono', monospace" font-size="10" letter-spacing="1.5" fill="#c9a96e" opacity="0.45">08 // CONTENT PRODUCTION · 5 PRESET SUITE</text>
+  </g>
+
+  <!-- Lightroom Curve & Presets Board -->
+  <g transform="translate(200, 105)" filter="url(#shadowHeavy)">
+    <rect width="800" height="450" rx="8" fill="url(#darkSurface)" stroke="url(#goldBorder)" stroke-width="1" />
+    
+    <!-- Tone Curve Panel (Left) -->
+    <g transform="translate(45, 45)">
+      <rect width="290" height="290" rx="4" fill="#080705" stroke="rgba(201,169,110,0.15)" />
+      <!-- Grid Lines -->
+      <line x1="0" y1="72" x2="290" y2="72" stroke="rgba(201,169,110,0.1)" stroke-dasharray="2,2" />
+      <line x1="0" y1="145" x2="290" y2="145" stroke="rgba(201,169,110,0.1)" stroke-dasharray="2,2" />
+      <line x1="0" y1="218" x2="290" y2="218" stroke="rgba(201,169,110,0.1)" stroke-dasharray="2,2" />
+      <line x1="72" y1="0" x2="72" y2="290" stroke="rgba(201,169,110,0.1)" stroke-dasharray="2,2" />
+      <line x1="145" y1="0" x2="145" y2="290" stroke="rgba(201,169,110,0.1)" stroke-dasharray="2,2" />
+      <line x1="218" y1="0" x2="218" y2="290" stroke="rgba(201,169,110,0.1)" stroke-dasharray="2,2" />
+
+      <!-- S-Curve Gold Line -->
+      <path d="M 0 290 C 70 270 120 180 145 145 C 170 110 220 20 290 0" fill="none" stroke="url(#goldGrad)" stroke-width="3" />
+      <circle cx="75" cy="245" r="5" fill="url(#goldGrad)" />
+      <circle cx="145" cy="145" r="5" fill="url(#goldGrad)" />
+      <circle cx="215" cy="45" r="5" fill="url(#goldGrad)" />
+
+      <text x="0" y="325" font-family="'Montserrat', sans-serif" font-size="8" letter-spacing="2" fill="#c9a96e">TONE CURVE PROFILE</text>
+      <text x="0" y="345" font-family="'Cormorant Garamond', serif" font-size="16" fill="#f0e8d8">Warm Obsidian S-Tone (.xmp / .dng)</text>
+    </g>
+
+    <!-- 5 Preset Modules (Right) -->
+    <g transform="translate(380, 45)">
+      <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" fill="#c9a96e">SIGNATURE FILM PRESETS</text>
+      
+        <g transform="translate(0, 25)">
+          <rect width="375" height="48" rx="4" fill="#0d0b08" stroke="rgba(201,169,110,0.18)" />
+          <circle cx="24" cy="24" r="7" fill="url(#goldGrad)" opacity="1" />
+          <text x="44" y="24" font-family="'Cormorant Garamond', serif" font-size="17" fill="#f0e8d8">01. Golden Obsidian</text>
+          <text x="44" y="38" font-family="'Montserrat', sans-serif" font-size="6.5" letter-spacing="1.5" fill="#c9a96e">HIGH CONTRAST / RICH GOLD</text>
+        </g>
+      
+        <g transform="translate(0, 83)">
+          <rect width="375" height="48" rx="4" fill="#0d0b08" stroke="rgba(201,169,110,0.18)" />
+          <circle cx="24" cy="24" r="7" fill="url(#goldGrad)" opacity="0.85" />
+          <text x="44" y="24" font-family="'Cormorant Garamond', serif" font-size="17" fill="#f0e8d8">02. Velvet Editorial</text>
+          <text x="44" y="38" font-family="'Montserrat', sans-serif" font-size="6.5" letter-spacing="1.5" fill="#c9a96e">MUTED HIGHLIGHTS / MATTE</text>
+        </g>
+      
+        <g transform="translate(0, 141)">
+          <rect width="375" height="48" rx="4" fill="#0d0b08" stroke="rgba(201,169,110,0.18)" />
+          <circle cx="24" cy="24" r="7" fill="url(#goldGrad)" opacity="0.7" />
+          <text x="44" y="24" font-family="'Cormorant Garamond', serif" font-size="17" fill="#f0e8d8">03. Champagne Warmth</text>
+          <text x="44" y="38" font-family="'Montserrat', sans-serif" font-size="6.5" letter-spacing="1.5" fill="#c9a96e">WARM SKIN TONES / FILM</text>
+        </g>
+      
+        <g transform="translate(0, 199)">
+          <rect width="375" height="48" rx="4" fill="#0d0b08" stroke="rgba(201,169,110,0.18)" />
+          <circle cx="24" cy="24" r="7" fill="url(#goldGrad)" opacity="0.55" />
+          <text x="44" y="24" font-family="'Cormorant Garamond', serif" font-size="17" fill="#f0e8d8">04. Noir Minimalist</text>
+          <text x="44" y="38" font-family="'Montserrat', sans-serif" font-size="6.5" letter-spacing="1.5" fill="#c9a96e">DEEP BLACKS / MONO COLD</text>
+        </g>
+      
+        <g transform="translate(0, 257)">
+          <rect width="375" height="48" rx="4" fill="#0d0b08" stroke="rgba(201,169,110,0.18)" />
+          <circle cx="24" cy="24" r="7" fill="url(#goldGrad)" opacity="0.4" />
+          <text x="44" y="24" font-family="'Cormorant Garamond', serif" font-size="17" fill="#f0e8d8">05. Studio Daylight</text>
+          <text x="44" y="38" font-family="'Montserrat', sans-serif" font-size="6.5" letter-spacing="1.5" fill="#c9a96e">NATURAL CLEAN / BALANCED</text>
+        </g>
+      
+    </g>
+  </g>
+
+  <g transform="translate(60, 560)">
+    <rect width="250" height="42" rx="21" fill="rgba(15,13,10,0.85)" stroke="rgba(201,169,110,0.35)" stroke-width="1" filter="url(#shadowCard)" />
+    <circle cx="24" cy="21" r="5" fill="#c9a96e" />
+    <text x="40" y="25" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" font-weight="500" fill="#f0e8d8">LIGHTROOM PRESETS</text>
+  </g>
+
+</svg>

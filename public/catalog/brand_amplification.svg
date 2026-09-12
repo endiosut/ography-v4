@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675">
+
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#1c1811" />
+      <stop offset="60%" stop-color="#0c0a07" />
+      <stop offset="100%" stop-color="#050403" />
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5e4" />
+      <stop offset="25%" stop-color="#c9a96e" />
+      <stop offset="50%" stop-color="#99783d" />
+      <stop offset="75%" stop-color="#eddac0" />
+      <stop offset="100%" stop-color="#7a5822" />
+    </linearGradient>
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(201,169,110,0.65)" />
+      <stop offset="50%" stop-color="rgba(240,232,216,0.2)" />
+      <stop offset="100%" stop-color="rgba(201,169,110,0.5)" />
+    </linearGradient>
+    <linearGradient id="darkSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181510" />
+      <stop offset="100%" stop-color="#0d0b08" />
+    </linearGradient>
+    <filter id="shadowHeavy" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity="0.85" />
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+    <filter id="shadowCard" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity="0.75" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c9a96e" flood-opacity="0.1" />
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(201,169,110,0.03)" stroke-width="1" />
+    </pattern>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bgGrad)" />
+  <rect width="1200" height="675" fill="url(#grid)" />
+  <ellipse cx="600" cy="340" rx="420" ry="240" fill="#c9a96e" opacity="0.035" filter="blur(70px)" />
+
+
+  <!-- Top Spec Tag -->
+  <g transform="translate(60, 60)">
+    <text x="0" y="0" font-family="'IBM Plex Mono', monospace" font-size="10" letter-spacing="1.5" fill="#c9a96e" opacity="0.45">02 // IDENTITY SYSTEMS · CHARTE GRAPHIQUE</text>
+  </g>
+
+  <!-- Open Hardcover Guidelines Manual (Center) -->
+  <g transform="translate(200, 110)" filter="url(#shadowHeavy)">
+    <!-- Book Left Page -->
+    <path d="M 0 10 Q 200 0 400 6 L 400 460 Q 200 454 0 464 Z" fill="#14110b" stroke="url(#goldBorder)" stroke-width="1" />
+    <!-- Book Right Page -->
+    <path d="M 400 6 Q 600 0 800 10 L 800 464 Q 600 454 400 460 Z" fill="#16130c" stroke="url(#goldBorder)" stroke-width="1" />
+    <!-- Book Spine Crease & Shadow -->
+    <line x1="400" y1="5" x2="400" y2="461" stroke="#050403" stroke-width="4" />
+    <line x1="400" y1="5" x2="400" y2="461" stroke="url(#goldGrad)" stroke-width="1" opacity="0.4" />
+
+    <!-- Silk Bookmark Ribbon in Gold -->
+    <path d="M 396 0 L 404 0 L 404 495 L 400 485 L 396 495 Z" fill="url(#goldGrad)" filter="url(#shadowCard)" />
+
+    <!-- Left Page Content: Logo Architecture Grid -->
+    <g transform="translate(45, 50)">
+      <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="3" fill="#c9a96e" opacity="0.8">01. LOGO ANATOMY &amp; CLEARSPACE</text>
+      <text x="0" y="16" font-family="'Montserrat', sans-serif" font-size="7" letter-spacing="1.5" fill="#e8d5b7" opacity="0.35">CROSS-PLATFORM RATIOS</text>
+      
+      <!-- Logo Grid Box -->
+      <rect x="0" y="40" width="310" height="200" rx="4" fill="#090805" stroke="rgba(201,169,110,0.15)" stroke-width="1" />
+      <circle cx="155" cy="140" r="60" fill="none" stroke="rgba(201,169,110,0.2)" stroke-dasharray="2,3" />
+      <line x1="55" y1="140" x2="255" y2="140" stroke="rgba(201,169,110,0.15)" />
+      <line x1="155" y1="60" x2="155" y2="220" stroke="rgba(201,169,110,0.15)" />
+
+      <!-- Centered Gold Mark -->
+      <g transform="translate(155, 140)">
+        <polygon points="0,-40 35,20 -35,20" fill="none" stroke="url(#goldGrad)" stroke-width="2.5" />
+        <circle cx="0" cy="2" r="16" fill="none" stroke="url(#goldGrad)" stroke-width="2" />
+        <circle cx="0" cy="2" r="4.5" fill="url(#goldGrad)" />
+      </g>
+
+      <!-- Brand Voice Summary -->
+      <g transform="translate(0, 270)">
+        <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="8.5" letter-spacing="2" fill="#c9a96e">BRAND VOICE &amp; ESSENCE</text>
+        <text x="0" y="22" font-family="'Cormorant Garamond', serif" font-size="16" font-style="italic" fill="#f0e8d8">"Quiet authority, uncompromising precision."</text>
+        <text x="0" y="45" font-family="'Montserrat', sans-serif" font-size="7.5" fill="#e8d5b7" opacity="0.45">Autonomous creative infrastructure designed for market dominance.</text>
+      </g>
+    </g>
+
+    <!-- Right Page Content: Typography Specimen & Color Matrix -->
+    <g transform="translate(445, 50)">
+      <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="3" fill="#c9a96e" opacity="0.8">02. TYPOGRAPHY &amp; ASSET LIBRARY</text>
+      <text x="0" y="16" font-family="'Montserrat', sans-serif" font-size="7" letter-spacing="1.5" fill="#e8d5b7" opacity="0.35">PRIMARY &amp; EDITORIAL TYPESETTING</text>
+
+      <text x="0" y="65" font-family="'Cormorant Garamond', serif" font-size="34" font-weight="300" fill="#f0e8d8">Typography System</text>
+      <text x="0" y="90" font-family="'Montserrat', sans-serif" font-size="11" letter-spacing="2" fill="#c9a96e">ABCDEFGHIKLMNOPQRSTUVWXYZ</text>
+      <text x="0" y="106" font-family="'Montserrat', sans-serif" font-size="8" letter-spacing="1" fill="#e8d5b7" opacity="0.4">1234567890 · (!@#$%&amp;*)</text>
+
+      <line x1="0" y1="130" x2="310" y2="130" stroke="rgba(201,169,110,0.12)" />
+
+      <!-- Asset Library Swatch Breakdown -->
+      <g transform="translate(0, 155)">
+        <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="8.5" letter-spacing="2" fill="#c9a96e">COLOR SPECIFICATIONS</text>
+        <g transform="translate(0, 20)">
+          <rect x="0" y="0" width="70" height="42" rx="3" fill="#0a0906" stroke="rgba(201,169,110,0.3)" />
+          <rect x="78" y="0" width="70" height="42" rx="3" fill="#c9a96e" />
+          <rect x="156" y="0" width="70" height="42" rx="3" fill="#f0e8d8" />
+          <rect x="234" y="0" width="70" height="42" rx="3" fill="#2a2318" />
+          <text x="5" y="58" font-family="'Montserrat', sans-serif" font-size="7" fill="#c9a96e">OBSIDIAN</text>
+          <text x="83" y="58" font-family="'Montserrat', sans-serif" font-size="7" fill="#c9a96e">GOLD FOIL</text>
+          <text x="161" y="58" font-family="'Montserrat', sans-serif" font-size="7" fill="#c9a96e">CHAMPAGNE</text>
+          <text x="239" y="58" font-family="'Montserrat', sans-serif" font-size="7" fill="#c9a96e">BRONZE</text>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- Floating Badge -->
+  <g transform="translate(60, 560)">
+    <rect width="220" height="42" rx="21" fill="rgba(15,13,10,0.85)" stroke="rgba(201,169,110,0.35)" stroke-width="1" filter="url(#shadowCard)" />
+    <circle cx="24" cy="21" r="5" fill="#c9a96e" />
+    <text x="40" y="25" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" font-weight="500" fill="#f0e8d8">BRAND AMPLIFICATION</text>
+  </g>
+
+</svg>

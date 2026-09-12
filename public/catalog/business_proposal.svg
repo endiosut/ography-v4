@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675">
+
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#1c1811" />
+      <stop offset="60%" stop-color="#0c0a07" />
+      <stop offset="100%" stop-color="#050403" />
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5e4" />
+      <stop offset="25%" stop-color="#c9a96e" />
+      <stop offset="50%" stop-color="#99783d" />
+      <stop offset="75%" stop-color="#eddac0" />
+      <stop offset="100%" stop-color="#7a5822" />
+    </linearGradient>
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(201,169,110,0.65)" />
+      <stop offset="50%" stop-color="rgba(240,232,216,0.2)" />
+      <stop offset="100%" stop-color="rgba(201,169,110,0.5)" />
+    </linearGradient>
+    <linearGradient id="darkSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181510" />
+      <stop offset="100%" stop-color="#0d0b08" />
+    </linearGradient>
+    <filter id="shadowHeavy" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity="0.85" />
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+    <filter id="shadowCard" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity="0.75" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c9a96e" flood-opacity="0.1" />
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(201,169,110,0.03)" stroke-width="1" />
+    </pattern>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bgGrad)" />
+  <rect width="1200" height="675" fill="url(#grid)" />
+  <ellipse cx="600" cy="340" rx="420" ry="240" fill="#c9a96e" opacity="0.035" filter="blur(70px)" />
+
+
+  <g transform="translate(60, 60)">
+    <text x="0" y="0" font-family="'IBM Plex Mono', monospace" font-size="10" letter-spacing="1.5" fill="#c9a96e" opacity="0.45">14 // EDITORIAL · 15-PAGE PROPOSAL TEMPLATE</text>
+  </g>
+
+  <!-- Editorial Proposal Document Spread -->
+  <g transform="translate(230, 95)" filter="url(#shadowHeavy)">
+    <rect width="740" height="470" rx="8" fill="url(#darkSurface)" stroke="url(#goldBorder)" stroke-width="1" />
+    
+    <!-- Left Cover Page -->
+    <g transform="translate(35, 35)">
+      <rect width="320" height="400" rx="4" fill="#0a0805" stroke="rgba(201,169,110,0.2)" />
+      <!-- Gold Foil Accent Line -->
+      <line x1="0" y1="0" x2="320" y2="0" stroke="url(#goldGrad)" stroke-width="2.5" />
+      
+      <g transform="translate(30, 60)">
+        <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="8.5" letter-spacing="3" fill="#c9a96e">BUSINESS PROPOSAL</text>
+        <text x="0" y="30" font-family="'Cormorant Garamond', serif" font-size="28" font-weight="300" fill="#f0e8d8">Strategic Scope &amp;</text>
+        <text x="0" y="60" font-family="'Cormorant Garamond', serif" font-size="28" font-weight="300" fill="#f0e8d8">Commercial Agreement</text>
+        
+        <line x1="0" y1="85" x2="180" y2="85" stroke="#c9a96e" stroke-width="1" opacity="0.4" />
+        
+        <text x="0" y="125" font-family="'Montserrat', sans-serif" font-size="8" fill="#e8d5b7" opacity="0.5">PREPARED FOR: ENTERPRISE CLIENT</text>
+        <text x="0" y="142" font-family="'Montserrat', sans-serif" font-size="8" fill="#e8d5b7" opacity="0.5">DATE: 2026 // CONFIDENTIAL</text>
+        
+        <!-- Monogram Seal -->
+        <circle cx="130" cy="230" r="30" fill="none" stroke="url(#goldGrad)" stroke-width="1.2" />
+        <text x="130" y="235" text-anchor="middle" font-family="'Cormorant Garamond', serif" font-size="16" fill="#c9a96e">OG</text>
+      </g>
+    </g>
+
+    <!-- Right Summary Page (Pricing Table & Milestones) -->
+    <g transform="translate(385, 35)">
+      <rect width="320" height="400" rx="4" fill="#0e0c08" stroke="rgba(201,169,110,0.15)" />
+      
+      <g transform="translate(25, 45)">
+        <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="8.5" letter-spacing="2" fill="#c9a96e">INVESTMENT SCHEDULE</text>
+        
+        <!-- Table Row 1 -->
+        <g transform="translate(0, 30)">
+          <rect width="270" height="40" rx="3" fill="#14110c" />
+          <text x="12" y="24" font-family="'Montserrat', sans-serif" font-size="8" fill="#f0e8d8">Phase 01: Discovery &amp; Audit</text>
+          <text x="210" y="24" font-family="'Cormorant Garamond', serif" font-size="15" fill="#c9a96e">$2,500</text>
+        </g>
+        <!-- Table Row 2 -->
+        <g transform="translate(0, 80)">
+          <rect width="270" height="40" rx="3" fill="#14110c" />
+          <text x="12" y="24" font-family="'Montserrat', sans-serif" font-size="8" fill="#f0e8d8">Phase 02: Full Execution</text>
+          <text x="210" y="24" font-family="'Cormorant Garamond', serif" font-size="15" fill="#c9a96e">$5,000</text>
+        </g>
+        <!-- Table Row 3 -->
+        <g transform="translate(0, 130)">
+          <rect width="270" height="40" rx="3" fill="#14110c" />
+          <text x="12" y="24" font-family="'Montserrat', sans-serif" font-size="8" fill="#f0e8d8">Phase 03: Delivery &amp; Handover</text>
+          <text x="210" y="24" font-family="'Cormorant Garamond', serif" font-size="15" fill="#c9a96e">$2,500</text>
+        </g>
+
+        <!-- Signature Block -->
+        <g transform="translate(0, 210)">
+          <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="7.5" letter-spacing="2" fill="#c9a96e">AUTHORIZED SIGNATURE</text>
+          <line x1="0" y1="40" x2="270" y2="40" stroke="rgba(201,169,110,0.3)" />
+          <text x="0" y="32" font-family="'Cormorant Garamond', serif" font-size="20" font-style="italic" fill="#f0e8d8">Endi Osut</text>
+          <text x="0" y="55" font-family="'Montserrat', sans-serif" font-size="7" fill="#e8d5b7" opacity="0.4">Managing Partner · OGraphy Studio</text>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(60, 560)">
+    <rect width="230" height="42" rx="21" fill="rgba(15,13,10,0.85)" stroke="rgba(201,169,110,0.35)" stroke-width="1" filter="url(#shadowCard)" />
+    <circle cx="24" cy="21" r="5" fill="#c9a96e" />
+    <text x="40" y="25" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" font-weight="500" fill="#f0e8d8">BUSINESS PROPOSAL</text>
+  </g>
+
+</svg>

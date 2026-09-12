@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1c1811" />
+      <stop offset="60%" stop-color="#0c0a07" />
+      <stop offset="100%" stop-color="#050403" />
+    </radialGradient>
+
+    <!-- Metallic Gold Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fdf4e3" />
+      <stop offset="25%" stop-color="#c9a96e" />
+      <stop offset="50%" stop-color="#9a7a40" />
+      <stop offset="75%" stop-color="#e8d5b7" />
+      <stop offset="100%" stop-color="#805d25" />
+    </linearGradient>
+
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(201,169,110,0.6)" />
+      <stop offset="50%" stop-color="rgba(240,232,216,0.2)" />
+      <stop offset="100%" stop-color="rgba(201,169,110,0.5)" />
+    </linearGradient>
+
+    <!-- Card Gradients -->
+    <linearGradient id="cardGrad1" x1="0%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#181510" />
+      <stop offset="100%" stop-color="#0e0c08" />
+    </linearGradient>
+
+    <linearGradient id="cardGrad2" x1="10%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14110b" />
+      <stop offset="100%" stop-color="#080705" />
+    </linearGradient>
+
+    <!-- Drop Shadows -->
+    <filter id="shadowHeavy" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.75" />
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+
+    <filter id="shadowMed" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000000" flood-opacity="0.65" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c9a96e" flood-opacity="0.1" />
+    </filter>
+
+    <filter id="glowGold" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(201,169,110,0.03)" stroke-width="1" />
+    </pattern>
+  </defs>
+
+  <!-- Background Layer -->
+  <rect width="1200" height="675" fill="url(#bgGrad)" />
+  <rect width="1200" height="675" fill="url(#grid)" />
+
+  <!-- Subtle Studio Ambient Glow Behind Cards -->
+  <ellipse cx="600" cy="340" rx="380" ry="240" fill="#c9a96e" opacity="0.04" filter="blur(60px)" />
+
+  <!-- ── CARD 1: Central Brand Board / Guidelines Sheet ── -->
+  <g transform="translate(180, 85)" filter="url(#shadowHeavy)">
+    <!-- Sheet Body -->
+    <rect width="520" height="490" rx="8" fill="url(#cardGrad1)" stroke="url(#goldBorder)" stroke-width="1" />
+
+    <!-- Corner Register Marks -->
+    <path d="M 20 30 L 30 30 M 20 20 L 20 30" stroke="#c9a96e" stroke-width="1" opacity="0.4" fill="none" />
+    <path d="M 500 30 L 490 30 M 500 20 L 500 30" stroke="#c9a96e" stroke-width="1" opacity="0.4" fill="none" />
+    <path d="M 20 460 L 30 460 M 20 470 L 20 460" stroke="#c9a96e" stroke-width="1" opacity="0.4" fill="none" />
+    <path d="M 500 460 L 490 460 M 500 470 L 500 460" stroke="#c9a96e" stroke-width="1" opacity="0.4" fill="none" />
+
+    <!-- Sheet Header -->
+    <text x="45" y="55" font-family="'Montserrat', sans-serif" font-size="11" letter-spacing="4" fill="#c9a96e" text-transform="uppercase" opacity="0.8">OGraphy Studio · Identity Systems</text>
+    <text x="45" y="72" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" fill="#e8d5b7" opacity="0.35">SYSTEM SPECIFICATION SHEET // REF: OG-ECHO-01</text>
+    <line x1="45" y1="85" x2="475" y2="85" stroke="rgba(201,169,110,0.15)" stroke-width="1" />
+
+    <!-- Primary Brand Mark Symbol (Geometric Monogram) -->
+    <g transform="translate(260, 185)">
+      <!-- Outer diamond/circle frame -->
+      <circle cx="0" cy="0" r="54" fill="none" stroke="url(#goldGrad)" stroke-width="1.5" opacity="0.85" />
+      <circle cx="0" cy="0" r="46" fill="none" stroke="rgba(201,169,110,0.3)" stroke-dasharray="3,3" stroke-width="1" />
+      
+      <!-- Iconic Interlocking Geometric Mark -->
+      <polygon points="0,-36 31,18 -31,18" fill="none" stroke="url(#goldGrad)" stroke-width="2.5" />
+      <circle cx="0" cy="2" r="14" fill="none" stroke="url(#goldGrad)" stroke-width="2" />
+      <circle cx="0" cy="2" r="4" fill="url(#goldGrad)" />
+      
+      <!-- Label below mark -->
+      <text x="0" y="78" text-anchor="middle" font-family="'Cormorant Garamond', serif" font-size="20" font-weight="300" letter-spacing="3" fill="#f0e8d8">E C H O</text>
+      <text x="0" y="94" text-anchor="middle" font-family="'Montserrat', sans-serif" font-size="8" letter-spacing="4" fill="#c9a96e" opacity="0.7">PRIMARY IDENTITY MARK</text>
+    </g>
+
+    <!-- Typography Section -->
+    <g transform="translate(45, 330)">
+      <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2.5" fill="#c9a96e" opacity="0.6">TYPOGRAPHY HIERARCHY</text>
+      <text x="0" y="28" font-family="'Cormorant Garamond', serif" font-size="28" font-weight="300" fill="#f0e8d8">Aa Bb Gg 012</text>
+      <text x="0" y="46" font-family="'Montserrat', sans-serif" font-size="10" letter-spacing="1.5" fill="#e8d5b7" opacity="0.5">Cormorant Garamond &amp; Montserrat Sans</text>
+    </g>
+
+    <!-- Swatch Palette Module -->
+    <g transform="translate(45, 415)">
+      <text x="0" y="0" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2.5" fill="#c9a96e" opacity="0.6">PALETTE ARCHITECTURE</text>
+      <g transform="translate(0, 14)">
+        <rect x="0" y="0" width="48" height="24" rx="3" fill="#0a0906" stroke="rgba(201,169,110,0.3)" stroke-width="1" />
+        <rect x="56" y="0" width="48" height="24" rx="3" fill="#c9a96e" />
+        <rect x="112" y="0" width="48" height="24" rx="3" fill="#f0e8d8" />
+        <rect x="168" y="0" width="48" height="24" rx="3" fill="#1c1811" stroke="rgba(201,169,110,0.2)" stroke-width="1" />
+        <text x="0" y="36" font-family="'Montserrat', sans-serif" font-size="7" fill="rgba(232,213,183,0.35)">#0A0906</text>
+        <text x="56" y="36" font-family="'Montserrat', sans-serif" font-size="7" fill="rgba(232,213,183,0.35)">#C9A96E</text>
+        <text x="112" y="36" font-family="'Montserrat', sans-serif" font-size="7" fill="rgba(232,213,183,0.35)">#F0E8D8</text>
+        <text x="168" y="36" font-family="'Montserrat', sans-serif" font-size="7" fill="rgba(232,213,183,0.35)">#1C1811</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ── CARD 2: Floating Business Card (Top Right, angled) ── -->
+  <g transform="translate(680, 120) rotate(8)" filter="url(#shadowHeavy)">
+    <rect width="320" height="185" rx="6" fill="url(#cardGrad2)" stroke="url(#goldBorder)" stroke-width="1.2" />
+    <!-- Gold Foil Edge Accent -->
+    <line x1="0" y1="0" x2="320" y2="0" stroke="url(#goldGrad)" stroke-width="2.5" />
+    
+    <!-- Minimalist Monogram on Card Front -->
+    <g transform="translate(160, 75)">
+      <circle cx="0" cy="0" r="24" fill="none" stroke="url(#goldGrad)" stroke-width="1.2" />
+      <polygon points="0,-16 14,8 -14,8" fill="none" stroke="url(#goldGrad)" stroke-width="1.5" />
+      <circle cx="0" cy="1" r="2.5" fill="url(#goldGrad)" />
+      <text x="0" y="42" text-anchor="middle" font-family="'Cormorant Garamond', serif" font-size="16" letter-spacing="3" fill="#f0e8d8">OG R A P H Y</text>
+      <text x="0" y="55" text-anchor="middle" font-family="'Montserrat', sans-serif" font-size="6.5" letter-spacing="3" fill="#c9a96e" opacity="0.8">VISUAL READINESS</text>
+    </g>
+  </g>
+
+  <!-- ── CARD 3: Business Card Back (Bottom Right, overlapping) ── -->
+  <g transform="translate(640, 325) rotate(-6)" filter="url(#shadowHeavy)">
+    <rect width="320" height="185" rx="6" fill="#0b0907" stroke="rgba(201,169,110,0.25)" stroke-width="1" />
+    
+    <!-- Content on Card Back -->
+    <g transform="translate(30, 45)">
+      <text x="0" y="0" font-family="'Cormorant Garamond', serif" font-size="20" font-weight="300" fill="#f0e8d8">Endi Osut</text>
+      <text x="0" y="16" font-family="'Montserrat', sans-serif" font-size="7" letter-spacing="2.5" fill="#c9a96e">CREATIVE DIRECTOR</text>
+      <line x1="0" y1="28" x2="80" y2="28" stroke="#c9a96e" stroke-width="1" opacity="0.4" />
+
+      <text x="0" y="65" font-family="'Montserrat', sans-serif" font-size="7.5" fill="#e8d5b7" opacity="0.45">studio@ography.com</text>
+      <text x="0" y="80" font-family="'Montserrat', sans-serif" font-size="7.5" fill="#e8d5b7" opacity="0.45">ography-v4.vercel.app</text>
+      
+      <!-- Miniature Stamp -->
+      <g transform="translate(225, 65)">
+        <circle cx="0" cy="0" r="16" fill="none" stroke="url(#goldGrad)" stroke-width="0.8" opacity="0.5" />
+        <text x="0" y="3" text-anchor="middle" font-family="'Montserrat', sans-serif" font-size="6" fill="#c9a96e" opacity="0.7">OG</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ── FLOATING LUXURY BADGE (Bottom Left Tag) ── -->
+  <g transform="translate(60, 560)">
+    <rect width="210" height="42" rx="21" fill="rgba(15,13,10,0.85)" stroke="rgba(201,169,110,0.35)" stroke-width="1" filter="url(#shadowMed)" />
+    <circle cx="24" cy="21" r="5" fill="#c9a96e" />
+    <text x="40" y="25" font-family="'Montserrat', sans-serif" font-size="9" letter-spacing="2" font-weight="500" fill="#f0e8d8">ECHO LAUNCH KIT</text>
+  </g>
+
+  <!-- Spec Tag Top Left -->
+  <g transform="translate(60, 60)">
+    <text x="0" y="0" font-family="'IBM Plex Mono', monospace" font-size="10" letter-spacing="1" fill="#c9a96e" opacity="0.4">01 // IDENTITY SYSTEMS</text>
+  </g>
+</svg>
