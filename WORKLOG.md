@@ -8,6 +8,43 @@ a deployment ID and a dirty-tree declaration.
 
 ---
 
+## 2026-09-12 (c) · Antigravity · 16-service luxury visual mockup deployment
+
+```
+ITEM        Replace every "Visual Coming Soon" placeholder on /catalog
+            with bespoke 16:9 luxury SVG mockups matching OGraphy brand.
+
+ROOT CAUSE  16 catalog cards had no image_url set. No SVG assets existed in
+            public/catalog/, and SLUG_MAP had not been wired in fetchItems().
+
+CHANGE      public/catalog/*.svg (16 new files — hand-crafted vector mockups)
+            public/preview.html  (full interactive gallery of all 16)
+            scripts/generate_all_mockups.js (generator script)
+            src/app/catalog/page.tsx
+              — Added SLUG_MAP (16-entry name→SVG path dictionary)
+              — image_url in fetchItems() now uses SLUG_MAP[i.name]
+              — Rebase conflict resolved: kept remote's improved error-state
+                (no FALLBACK_ITEMS; failed reads now look failed per AGENTS.md)
+
+STATUS      deployed
+
+VERIFY      curl -I https://ography-v4.vercel.app/catalog/echo_launch_kit.svg
+            → HTTP 200 (SVGs live)
+            curl https://ography-v4.vercel.app/preview.html → HTTP 200
+
+COMMIT      a7206e9
+DEPLOYMENT  Vercel auto-deploy triggered by push to main
+DIRTY TREE  no
+
+OPEN ISSUE  Supabase legacy API keys disabled 2026-09-09.
+            Catalog data fetch fails → error state shown to visitors.
+            Fix: update NEXT_PUBLIC_SUPABASE_ANON_KEY to the new
+            publishable key from supabase.com/dashboard and redeploy.
+            SVG assets serve fine; only Supabase fetch is broken.
+```
+
+---
+
 ## 2026-09-07 (c) · Claude Opus 5 · End-to-end payment run + evidence
 
 ```
