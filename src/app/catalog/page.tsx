@@ -326,14 +326,13 @@ export default function CatalogPage() {
                   el.style.borderColor = 'rgba(201,169,110,.1)';
                 }}
               >
-                {/* Image placeholder */}
+                {/* Image thumbnail */}
                 <div style={{
-                  width: '100%', aspectRatio: '16/9', borderRadius: 4,
+                  width: '100%', height: 80, borderRadius: 4,
                   background: item.image_url ? '#0d0b08' : 'rgba(201,169,110,.04)',
                   border: item.image_url ? '1px solid rgba(201,169,110,.18)' : '1px dashed rgba(201,169,110,.1)',
                   marginBottom: '1.25rem', overflow: 'hidden',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: 80,
                 }}>
                   {item.image_url
                     ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
