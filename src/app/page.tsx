@@ -4,8 +4,15 @@ import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import NavBar from '@/components/NavBar';
 
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://unzwefrtgsgmtljlbavf.supabase.co';
-const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuendlZnJ0Z3NnbXRsamxiYXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1MjMsImV4cCI6MjA5MjA4OTUyM30.QPoyf_UYDD82xW1KYaSbukPrfMoTAACVMKPT05HKI90';
+// No hardcoded key fallback (removed 09 Sep 2026). A pinned literal survives
+// every key rotation, so a misconfigured build runs against a dead credential
+// and fails somewhere far from the cause. NEXT_PUBLIC_* is inlined at build
+// time, so an empty value here means the Vercel env var was missing at build.
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+if (!SB_URL || !SB_ANON) {
+  console.error('[home] Supabase env vars were not set at build time — catalog will not load.');
+}
 
 type CatalogItem = {
   id: string;

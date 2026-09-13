@@ -1,9 +1,18 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  'https://unzwefrtgsgmtljlbavf.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuendlZnJ0Z3NnbXRsamxiYXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1MjMsImV4cCI6MjA5MjA4OTUyM30.QPoyf_UYDD82xW1KYaSbukPrfMoTAACVMKPT05HKI90'
-);
+// Credentials come from the environment (removed 09 Sep 2026 — a pinned literal
+// here goes stale on the first key rotation and then fails confusingly).
+// Seeding writes to catalog_items, which is admin-only under RLS, so this needs
+// SUPABASE_SERVICE_ROLE_KEY in your shell:
+//   vercel env pull .env.local && node --env-file=.env.local seed_catalog.js
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('✗ Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before seeding.');
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function seed() {
   console.log('Seeding OGraphy V4 catalog...\n');
