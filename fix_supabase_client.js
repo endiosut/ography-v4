@@ -5,9 +5,14 @@ const base = 'C:/Users/Endi Osut/ography-v4';
 fs.mkdirSync(base + '/src/lib', {recursive:true});
 fs.writeFileSync(base + '/src/lib/supabase.ts', `import { createClient } from '@supabase/supabase-js'
 
-// Hardcoded fallbacks ensure the client works even if env vars aren't set at build time
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://unzwefrtgsgmtljlbavf.supabase.co'
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuendlZnJ0Z3NnbXRsamxiYXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1MjMsImV4cCI6MjA5MjA4OTUyM30.QPoyf_UYDD82xW1KYaSbukPrfMoTAACVMKPT05HKI90'
+// No hardcoded key fallback. A pinned literal silently outlives every key
+// rotation, so a misconfigured deploy runs against a dead credential and fails
+// far away from the cause. Fail loudly at startup instead.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set')
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
@@ -79,20 +84,29 @@ export async function getProjects() {
 `, 'utf8');
 console.log('supabase.ts fixed with hardcoded fallbacks');
 
-// 2. Overwrite .env.local with correct values
-fs.writeFileSync(base + '/.env.local', `NEXT_PUBLIC_SUPABASE_URL=https://unzwefrtgsgmtljlbavf.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuendlZnJ0Z3NnbXRsamxiYXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1MjMsImV4cCI6MjA5MjA4OTUyM30.QPoyf_UYDD82xW1KYaSbukPrfMoTAACVMKPT05HKI90
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuendlZnJ0Z3NnbXRsamxiYXZmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjUxMzUyMywiZXhwIjoyMDkyMDg5NTIzfQ.3Eg8BjGIwW6eiDZsUDe3liCwkugYLcYK6u-hSC3AsEg
-STRIPE_SECRET_KEY=sk_test_REPLACE_LATER
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_REPLACE_LATER
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-`, 'utf8');
-console.log('.env.local written');
+// 2. Write .env.local from the OPERATOR'S ENVIRONMENT.
+//
+// SECURITY (09 Sep 2026): this block previously wrote the live service_role key
+// as a literal, in a file tracked in git. See deploy_v4.js for the full note.
+// Never reintroduce a key here — `vercel env pull .env.local` is the supported
+// way to get real values onto a dev machine.
+const REQUIRED = ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
+const missing = REQUIRED.filter((k) => !process.env[k]);
+if (missing.length) {
+  console.error('✗ Missing required environment variables: ' + missing.join(', '));
+  console.error('  Run `vercel env pull .env.local` instead, or export them and re-run.');
+  process.exit(1);
+}
+fs.writeFileSync(base + '/.env.local',
+  REQUIRED.map((k) => `${k}=${process.env[k]}`).join('\n') +
+  '\nNEXT_PUBLIC_APP_URL=http://localhost:3000\n', 'utf8');
+console.log('.env.local written from environment');
 
 // 3. Check the fix
 const content = fs.readFileSync(base + '/src/lib/supabase.ts', 'utf8');
-console.log('Has hardcoded URL:', content.includes('https://unzwefrtgsgmtljlbavf.supabase.co'));
-console.log('Has hardcoded key:', content.includes('QPoyf_UYDD'));
+console.log('Reads URL from env: ', content.includes('process.env.NEXT_PUBLIC_SUPABASE_URL'));
+console.log('Reads key from env: ', content.includes('process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY'));
+console.log('Contains no literal JWT:', !/eyJhbGciOi/.test(content));
 console.log('');
 console.log('Now run:');
 console.log('  Remove-Item -Recurse -Force .next');

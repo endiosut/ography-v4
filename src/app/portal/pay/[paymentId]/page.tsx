@@ -434,21 +434,35 @@ export default function PayPage() {
         }
       }
 
-      const { error: insErr } = await sb.from('payment_proofs').insert({
-        payment_id: payment.id,
-        payment_method_id: chosen,
-        file_path: filePath,
-        reference_text: reference.trim() || null,
-        review_status: 'submitted',   // required by the RLS insert policy
+      // Submit through the SERVER, not straight into the table.
+      //
+      // The direct insert worked, but no server code ran — so nothing could
+      // notify anyone, and the owner found out about a payment claim only by
+      // opening the admin queue and looking. The route records the proof AND
+      // pings the owner on Telegram within seconds. It also re-checks that the
+      // uploaded file path belongs to this payment, which the browser cannot
+      // be trusted to assert.
+      //
+      // The file itself still goes straight to storage above — streaming it
+      // through a serverless function would be slower and can time out.
+      const res = await fetch('/api/payments/proof', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentId: payment.id,
+          methodId: chosen,
+          filePath,
+          reference: reference.trim() || null,
+        }),
       });
 
-      if (insErr) {
-        console.error('[pay] proof insert failed:', insErr.message, insErr.code);
-        setError(
-          insErr.code === '23505'
-            ? 'A proof has already been submitted for this payment.'
-            : 'We could not record your submission. Nothing was charged — please try again.'
-        );
+      const out = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error('[pay] proof submit failed:', res.status, out?.error);
+        // The route returns a specific, actionable message per state — show it
+        // rather than flattening every failure into one generic string.
+        setError(out?.error || 'We could not record your submission. Nothing was charged — please try again.');
         return;
       }
       // The draft has served its purpose; leaving it would repopulate the form
